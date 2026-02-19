@@ -70,13 +70,10 @@ if assets_path.exists() and index_path.exists():
         """Liefert das Frontend."""
         return FileResponse(index_path)
 
-    @app.get("/{path:path}")
-    async def serve_frontend_routes(path: str):
-        """Fallback für SPA-Routing."""
-        file_path = static_path / path
-        if file_path.exists() and file_path.is_file():
-            return FileResponse(file_path)
-        return FileResponse(index_path)
+    @app.get("/favicon.svg")
+    async def serve_favicon():
+        """Liefert das Favicon."""
+        return FileResponse(static_path / "favicon.svg")
 else:
     @app.get("/")
     async def redirect_to_docs():
