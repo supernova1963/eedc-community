@@ -1,10 +1,23 @@
 version: "3.8"
 
+# =============================================================================
+# EEDC Community - Portainer Stack
+# =============================================================================
+#
+# Deployment:
+# 1. Backend-Dateien nach /opt/eedc-community/ kopieren
+# 2. Frontend bauen: cd frontend && npm install && npm run build
+# 3. Image bauen: docker build -t eedc-community-api:latest ./backend
+# 4. Diesen Stack in Portainer erstellen mit Environment Variables:
+#    - POSTGRES_PASSWORD: <sicheres Passwort>
+#    - SECRET_KEY: <zufälliger String>
+#    - ALLOWED_ORIGINS: https://energie.raunet.eu
+#
+# =============================================================================
+
 services:
   api:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: eedc-community-api:latest
     container_name: eedc-community-api
     restart: unless-stopped
     environment:
@@ -16,7 +29,7 @@ services:
         condition: service_healthy
     networks:
       - internal
-      - nginxproxymanager_default  # Für NPM-Zugriff
+      - nginxproxymanager_default
 
   db:
     image: postgres:16-alpine
@@ -27,7 +40,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=eedc_community
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - eedc_community_postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U eedc -d eedc_community"]
       interval: 5s
@@ -37,7 +50,7 @@ services:
       - internal
 
 volumes:
-  postgres_data:
+  eedc_community_postgres:
 
 networks:
   internal:
