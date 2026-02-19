@@ -20,7 +20,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: eedc-community-api:latest
     container_name: eedc-community-api
     restart: unless-stopped
     environment:
