@@ -1,0 +1,75 @@
+"""
+EEDC Community Server
+
+Anonyme Aggregation von PV-Anlagendaten für Community-Statistiken.
+"""
+
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+from core import settings, init_db
+from api import submit_router, stats_router, benchmark_router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup/Shutdown Events."""
+    # Startup: Datenbank initialisieren
+    await init_db()
+    print("✓ Datenbank initialisiert")
+    yield
+    # Shutdown
+    print("Server wird beendet...")
+
+
+app = FastAPI(
+    title="EEDC Community",
+    description="Anonyme PV-Anlagen-Statistiken für die Community",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+
+# CORS für Frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# API-Router einbinden
+app.include_router(submit_router, prefix="/api")
+app.include_router(stats_router, prefix="/api")
+app.include_router(benchmark_router, prefix="/api")
+
+
+# Health-Check
+@app.get("/api/health")
+async def health():
+    """Health-Check Endpoint."""
+    return {"status": "ok", "version": "0.1.0"}
+
+
+# Statische Dateien (Frontend)
+static_path = Path(__file__).parent / "static"
+if static_path.exists():
+    app.mount("/assets", StaticFiles(directory=static_path / "assets"), name="assets")
+
+    @app.get("/")
+    async def serve_frontend():
+        """Liefert das Frontend."""
+        return FileResponse(static_path / "index.html")
+
+    @app.get("/{path:path}")
+    async def serve_frontend_routes(path: str):
+        """Fallback für SPA-Routing."""
+        file_path = static_path / path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(static_path / "index.html")

@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+.venv/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Database (local development)
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker
+.docker/
+
+# Node
+node_modules/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
