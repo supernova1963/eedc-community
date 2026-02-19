@@ -58,13 +58,17 @@ async def health():
 
 # Statische Dateien (Frontend)
 static_path = Path(__file__).parent / "static"
-if static_path.exists():
-    app.mount("/assets", StaticFiles(directory=static_path / "assets"), name="assets")
+assets_path = static_path / "assets"
+index_path = static_path / "index.html"
+
+# Frontend nur einbinden wenn assets UND index.html existieren
+if assets_path.exists() and index_path.exists():
+    app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
 
     @app.get("/")
     async def serve_frontend():
         """Liefert das Frontend."""
-        return FileResponse(static_path / "index.html")
+        return FileResponse(index_path)
 
     @app.get("/{path:path}")
     async def serve_frontend_routes(path: str):
@@ -72,4 +76,14 @@ if static_path.exists():
         file_path = static_path / path
         if file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
-        return FileResponse(static_path / "index.html")
+        return FileResponse(index_path)
+else:
+    @app.get("/")
+    async def api_info():
+        """API-Info wenn kein Frontend vorhanden."""
+        return {
+            "service": "EEDC Community API",
+            "version": "0.1.0",
+            "docs": "/docs",
+            "health": "/api/health"
+        }

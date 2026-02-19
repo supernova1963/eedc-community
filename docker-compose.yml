@@ -1,25 +1,25 @@
 version: "3.8"
 
 # =============================================================================
-# EEDC Community - Portainer Stack
+# EEDC Community - Docker Compose
 # =============================================================================
 #
+# Image wird automatisch von GitHub Actions gebaut und auf Docker Hub gepusht.
+#
 # Deployment:
-# 1. Backend-Dateien nach /opt/eedc-community/ kopieren
-# 2. Frontend bauen: cd frontend && npm install && npm run build
-# 3. Image bauen: docker build -t eedc-community-api:latest ./backend
-# 4. Diesen Stack in Portainer erstellen mit Environment Variables:
+# 1. In Portainer: Stack erstellen mit "Web editor"
+# 2. Diese Datei einfügen
+# 3. Environment Variables setzen:
 #    - POSTGRES_PASSWORD: <sicheres Passwort>
 #    - SECRET_KEY: <zufälliger String>
-#    - ALLOWED_ORIGINS: https://energie.raunet.eu
+#    - ALLOWED_ORIGINS: https://energy.raunet.eu
 #
+# Update: docker compose pull && docker compose up -d
 # =============================================================================
 
 services:
   api:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: supernova1963/eedc-community:latest
     container_name: eedc-community-api
     restart: unless-stopped
     environment:
