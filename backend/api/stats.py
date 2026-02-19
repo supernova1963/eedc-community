@@ -78,7 +78,7 @@ async def berechne_jahresertrag(db: AsyncSession) -> float:
     Für jede Anlage: Summe der letzten 12 Monate / kWp
     Dann Durchschnitt über alle Anlagen.
     """
-    # Hole alle Anlagen mit ihren Monatswerten
+    # Hole alle Anlagen
     anlagen_result = await db.execute(select(Anlage))
     anlagen = anlagen_result.scalars().all()
 
@@ -88,16 +88,7 @@ async def berechne_jahresertrag(db: AsyncSession) -> float:
     jahresertraege = []
 
     for anlage in anlagen:
-        # Letzte 12 Monate für diese Anlage
-        monate_result = await db.execute(
-            select(func.sum(Monatswert.ertrag_kwh))
-            .where(Monatswert.anlage_id == anlage.id)
-            .order_by(Monatswert.jahr.desc(), Monatswert.monat.desc())
-            .limit(12)
-        )
-
-        # Wir brauchen die Summe der letzten 12 Monate
-        # Da LIMIT auf aggregierte Funktionen nicht direkt wirkt, machen wir es anders:
+        # Letzte 12 Monate für diese Anlage holen
         monate_detail = await db.execute(
             select(Monatswert.ertrag_kwh)
             .where(Monatswert.anlage_id == anlage.id)
