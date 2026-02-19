@@ -199,7 +199,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/stats/overview')
+    fetch('/api/stats')
       .then(res => {
         if (!res.ok) throw new Error('Fehler beim Laden der Daten')
         return res.json()
