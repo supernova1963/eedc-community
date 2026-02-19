@@ -10,7 +10,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
 from core import settings, init_db
 from api import submit_router, stats_router, benchmark_router
@@ -79,11 +79,6 @@ if assets_path.exists() and index_path.exists():
         return FileResponse(index_path)
 else:
     @app.get("/")
-    async def api_info():
-        """API-Info wenn kein Frontend vorhanden."""
-        return {
-            "service": "EEDC Community API",
-            "version": "0.1.0",
-            "docs": "/docs",
-            "health": "/api/health"
-        }
+    async def redirect_to_docs():
+        """Redirect zur API-Dokumentation wenn kein Frontend vorhanden."""
+        return RedirectResponse(url="/docs")
