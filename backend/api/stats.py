@@ -4,7 +4,7 @@ EEDC Community - Statistiken API
 
 from datetime import datetime
 from fastapi import APIRouter, Depends
-from sqlalchemy import select, func, case
+from sqlalchemy import select, func, case, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import get_db
@@ -50,25 +50,12 @@ async def get_statistiken(db: AsyncSession = Depends(get_db)):
     )
     durchschnitt_speicher_kwh = result.scalar()
 
-    # Durchschnittlicher spez. Jahresertrag (letztes vollständiges Jahr)
-    current_year = datetime.utcnow().year
-    target_year = current_year - 1
-
-    result = await db.execute(
-        select(
-            func.sum(Monatswert.ertrag_kwh),
-            func.sum(Anlage.kwp)
-        )
-        .join(Anlage)
-        .where(Monatswert.jahr == target_year)
-    )
-    row = result.first()
-    gesamt_ertrag = row[0] or 0
-    gesamt_kwp = row[1] or 1
-    durchschnitt_spez_ertrag_jahr = gesamt_ertrag / gesamt_kwp if gesamt_kwp > 0 else 0
+    # Durchschnittlicher spez. Jahresertrag
+    # Berechnung: Für jede Anlage die letzten 12 Monate summieren, dann Durchschnitt
+    durchschnitt_spez_ertrag_jahr = await berechne_jahresertrag(db)
 
     # Regionen-Statistiken
-    regionen = await get_regionen_statistiken(db, target_year)
+    regionen = await get_regionen_statistiken(db)
 
     # Letzte 12 Monate
     letzte_monate = await get_monats_statistiken(db, limit=12)
@@ -84,12 +71,62 @@ async def get_statistiken(db: AsyncSession = Depends(get_db)):
     )
 
 
-async def get_regionen_statistiken(db: AsyncSession, jahr: int) -> list[RegionStatistik]:
+async def berechne_jahresertrag(db: AsyncSession) -> float:
+    """
+    Berechnet den durchschnittlichen spezifischen Jahresertrag.
+
+    Für jede Anlage: Summe der letzten 12 Monate / kWp
+    Dann Durchschnitt über alle Anlagen.
+    """
+    # Hole alle Anlagen mit ihren Monatswerten
+    anlagen_result = await db.execute(select(Anlage))
+    anlagen = anlagen_result.scalars().all()
+
+    if not anlagen:
+        return 0
+
+    jahresertraege = []
+
+    for anlage in anlagen:
+        # Letzte 12 Monate für diese Anlage
+        monate_result = await db.execute(
+            select(func.sum(Monatswert.ertrag_kwh))
+            .where(Monatswert.anlage_id == anlage.id)
+            .order_by(Monatswert.jahr.desc(), Monatswert.monat.desc())
+            .limit(12)
+        )
+
+        # Wir brauchen die Summe der letzten 12 Monate
+        # Da LIMIT auf aggregierte Funktionen nicht direkt wirkt, machen wir es anders:
+        monate_detail = await db.execute(
+            select(Monatswert.ertrag_kwh)
+            .where(Monatswert.anlage_id == anlage.id)
+            .order_by(Monatswert.jahr.desc(), Monatswert.monat.desc())
+            .limit(12)
+        )
+        ertraege = [row[0] for row in monate_detail.all() if row[0] is not None]
+
+        if ertraege and anlage.kwp and anlage.kwp > 0:
+            summe_ertrag = sum(ertraege)
+            # Auf 12 Monate hochrechnen wenn weniger vorhanden
+            anzahl_monate = len(ertraege)
+            if anzahl_monate >= 6:  # Mindestens 6 Monate für sinnvolle Hochrechnung
+                jahres_ertrag_hochgerechnet = (summe_ertrag / anzahl_monate) * 12
+                spez_ertrag = jahres_ertrag_hochgerechnet / anlage.kwp
+                jahresertraege.append(spez_ertrag)
+
+    if not jahresertraege:
+        return 0
+
+    return sum(jahresertraege) / len(jahresertraege)
+
+
+async def get_regionen_statistiken(db: AsyncSession) -> list[RegionStatistik]:
     """Statistiken pro Region."""
     result = await db.execute(
         select(
             Anlage.region,
-            func.count(Anlage.id).label("anzahl"),
+            func.count(distinct(Anlage.id)).label("anzahl"),
             func.avg(Anlage.kwp).label("avg_kwp"),
             func.avg(
                 case((Anlage.speicher_kwh > 0, 1), else_=0)
@@ -107,26 +144,13 @@ async def get_regionen_statistiken(db: AsyncSession, jahr: int) -> list[RegionSt
 
     regionen = []
     for row in result.all():
-        # Spez. Ertrag für diese Region
-        ertrag_result = await db.execute(
-            select(
-                func.sum(Monatswert.ertrag_kwh),
-                func.sum(Anlage.kwp)
-            )
-            .join(Anlage)
-            .where(Monatswert.jahr == jahr)
-            .where(Anlage.region == row.region)
-        )
-        ertrag_row = ertrag_result.first()
-        region_ertrag = ertrag_row[0] or 0
-        region_kwp = ertrag_row[1] or 1
-        spez_ertrag = region_ertrag / region_kwp if region_kwp > 0 else 0
+        # Spez. Jahresertrag für diese Region (letzte 12 Monate, hochgerechnet)
+        spez_ertrag = await berechne_region_jahresertrag(db, row.region)
 
-        # Durchschnittliche Autarkie
+        # Durchschnittliche Autarkie (alle verfügbaren Monatswerte)
         autarkie_result = await db.execute(
             select(func.avg(Monatswert.autarkie_prozent))
             .join(Anlage)
-            .where(Monatswert.jahr == jahr)
             .where(Anlage.region == row.region)
             .where(Monatswert.autarkie_prozent.isnot(None))
         )
@@ -146,6 +170,42 @@ async def get_regionen_statistiken(db: AsyncSession, jahr: int) -> list[RegionSt
     return regionen
 
 
+async def berechne_region_jahresertrag(db: AsyncSession, region: str) -> float:
+    """Berechnet den spezifischen Jahresertrag für eine Region."""
+    # Hole alle Anlagen dieser Region
+    anlagen_result = await db.execute(
+        select(Anlage).where(Anlage.region == region)
+    )
+    anlagen = anlagen_result.scalars().all()
+
+    if not anlagen:
+        return 0
+
+    jahresertraege = []
+
+    for anlage in anlagen:
+        monate_detail = await db.execute(
+            select(Monatswert.ertrag_kwh)
+            .where(Monatswert.anlage_id == anlage.id)
+            .order_by(Monatswert.jahr.desc(), Monatswert.monat.desc())
+            .limit(12)
+        )
+        ertraege = [row[0] for row in monate_detail.all() if row[0] is not None]
+
+        if ertraege and anlage.kwp and anlage.kwp > 0:
+            summe_ertrag = sum(ertraege)
+            anzahl_monate = len(ertraege)
+            if anzahl_monate >= 6:
+                jahres_ertrag_hochgerechnet = (summe_ertrag / anzahl_monate) * 12
+                spez_ertrag = jahres_ertrag_hochgerechnet / anlage.kwp
+                jahresertraege.append(spez_ertrag)
+
+    if not jahresertraege:
+        return 0
+
+    return sum(jahresertraege) / len(jahresertraege)
+
+
 async def get_monats_statistiken(db: AsyncSession, limit: int = 12) -> list[MonatsStatistik]:
     """Statistiken pro Monat (letzte X Monate)."""
     # Letzte Monate ermitteln
@@ -159,44 +219,40 @@ async def get_monats_statistiken(db: AsyncSession, limit: int = 12) -> list[Mona
 
     statistiken = []
     for jahr, monat in monate:
-        # Aggregierte Werte für diesen Monat
+        # Hole alle Monatswerte für diesen Monat mit den zugehörigen Anlagen-kWp
         result = await db.execute(
             select(
-                func.count(Monatswert.id).label("anzahl"),
-                func.avg(Monatswert.ertrag_kwh).label("avg_ertrag"),
-                func.min(Monatswert.ertrag_kwh / Anlage.kwp).label("min_spez"),
-                func.max(Monatswert.ertrag_kwh / Anlage.kwp).label("max_spez"),
+                Monatswert.ertrag_kwh,
+                Anlage.kwp
             )
             .join(Anlage)
             .where(Monatswert.jahr == jahr)
             .where(Monatswert.monat == monat)
         )
-        row = result.first()
+        rows = result.all()
 
-        # Spezifischer Ertrag (Summe / Summe kWp)
-        spez_result = await db.execute(
-            select(
-                func.sum(Monatswert.ertrag_kwh),
-                func.sum(Anlage.kwp)
-            )
-            .join(Anlage)
-            .where(Monatswert.jahr == jahr)
-            .where(Monatswert.monat == monat)
-        )
-        spez_row = spez_result.first()
-        sum_ertrag = spez_row[0] or 0
-        sum_kwp = spez_row[1] or 1
-        avg_spez = sum_ertrag / sum_kwp if sum_kwp > 0 else 0
+        if not rows:
+            continue
+
+        # Berechne Statistiken
+        anzahl = len(rows)
+        ertraege = [r[0] for r in rows if r[0] is not None]
+        spez_ertraege = [r[0] / r[1] for r in rows if r[0] is not None and r[1] and r[1] > 0]
+
+        avg_ertrag = sum(ertraege) / len(ertraege) if ertraege else 0
+        avg_spez = sum(spez_ertraege) / len(spez_ertraege) if spez_ertraege else 0
+        min_spez = min(spez_ertraege) if spez_ertraege else 0
+        max_spez = max(spez_ertraege) if spez_ertraege else 0
 
         statistiken.append(MonatsStatistik(
             jahr=jahr,
             monat=monat,
-            anzahl_anlagen=row.anzahl or 0,
-            durchschnitt_ertrag_kwh=round(row.avg_ertrag or 0, 1),
+            anzahl_anlagen=anzahl,
+            durchschnitt_ertrag_kwh=round(avg_ertrag, 1),
             durchschnitt_spez_ertrag=round(avg_spez, 1),
             median_spez_ertrag=round(avg_spez, 1),  # Vereinfacht
-            min_spez_ertrag=round(row.min_spez or 0, 1),
-            max_spez_ertrag=round(row.max_spez or 0, 1),
+            min_spez_ertrag=round(min_spez, 1),
+            max_spez_ertrag=round(max_spez, 1),
         ))
 
     return statistiken
