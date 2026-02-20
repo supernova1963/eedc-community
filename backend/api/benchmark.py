@@ -2,7 +2,6 @@
 EEDC Community - Benchmark API
 """
 
-from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +11,70 @@ from models import Anlage, Monatswert
 from schemas import AnlageOutput, MonatswertOutput, BenchmarkData
 
 router = APIRouter(prefix="/benchmark", tags=["Benchmark"])
+
+
+async def berechne_spez_jahresertrag(db: AsyncSession, anlage_id: int, kwp: float) -> float:
+    """Berechnet den spezifischen Jahresertrag für eine Anlage (letzte 12 Monate, hochgerechnet)."""
+    if kwp <= 0:
+        return 0
+
+    monate_result = await db.execute(
+        select(Monatswert.ertrag_kwh)
+        .where(Monatswert.anlage_id == anlage_id)
+        .order_by(Monatswert.jahr.desc(), Monatswert.monat.desc())
+        .limit(12)
+    )
+    ertraege = [row[0] for row in monate_result.all() if row[0] is not None]
+
+    if not ertraege:
+        return 0
+
+    summe_ertrag = sum(ertraege)
+    anzahl_monate = len(ertraege)
+
+    # Auf 12 Monate hochrechnen
+    if anzahl_monate >= 6:
+        jahres_ertrag = (summe_ertrag / anzahl_monate) * 12
+    else:
+        jahres_ertrag = summe_ertrag  # Nicht genug Daten zum Hochrechnen
+
+    return jahres_ertrag / kwp
+
+
+async def berechne_community_durchschnitt(db: AsyncSession) -> float:
+    """Berechnet den Community-Durchschnitt (alle Anlagen, letzte 12 Monate)."""
+    anlagen_result = await db.execute(select(Anlage))
+    anlagen = anlagen_result.scalars().all()
+
+    if not anlagen:
+        return 0
+
+    jahresertraege = []
+    for anlage in anlagen:
+        spez = await berechne_spez_jahresertrag(db, anlage.id, anlage.kwp)
+        if spez > 0:
+            jahresertraege.append(spez)
+
+    return sum(jahresertraege) / len(jahresertraege) if jahresertraege else 0
+
+
+async def berechne_region_durchschnitt(db: AsyncSession, region: str) -> float:
+    """Berechnet den Regions-Durchschnitt."""
+    anlagen_result = await db.execute(
+        select(Anlage).where(Anlage.region == region)
+    )
+    anlagen = anlagen_result.scalars().all()
+
+    if not anlagen:
+        return 0
+
+    jahresertraege = []
+    for anlage in anlagen:
+        spez = await berechne_spez_jahresertrag(db, anlage.id, anlage.kwp)
+        if spez > 0:
+            jahresertraege.append(spez)
+
+    return sum(jahresertraege) / len(jahresertraege) if jahresertraege else 0
 
 
 @router.get("/anlage/{anlage_hash}")
@@ -39,44 +102,14 @@ async def get_anlage_benchmark(
     )
     monatswerte = result.scalars().all()
 
-    # Benchmark berechnen
-    current_year = datetime.utcnow().year
-    target_year = current_year if datetime.utcnow().month > 6 else current_year - 1
+    # Spez. Jahresertrag der Anlage (letzte 12 Monate, hochgerechnet)
+    spez_ertrag_anlage = await berechne_spez_jahresertrag(db, anlage.id, anlage.kwp)
 
-    # Spez. Ertrag der Anlage
-    anlage_ertrag = sum(
-        mw.ertrag_kwh for mw in monatswerte if mw.jahr == target_year
-    )
-    spez_ertrag_anlage = anlage_ertrag / anlage.kwp if anlage.kwp > 0 else 0
+    # Community-Durchschnitt
+    spez_ertrag_durchschnitt = await berechne_community_durchschnitt(db)
 
-    # Durchschnitt aller Anlagen
-    result = await db.execute(
-        select(
-            func.sum(Monatswert.ertrag_kwh),
-            func.sum(Anlage.kwp)
-        )
-        .join(Anlage)
-        .where(Monatswert.jahr == target_year)
-    )
-    row = result.first()
-    gesamt_ertrag = row[0] or 0
-    gesamt_kwp = row[1] or 1
-    spez_ertrag_durchschnitt = gesamt_ertrag / gesamt_kwp
-
-    # Durchschnitt der Region
-    result = await db.execute(
-        select(
-            func.sum(Monatswert.ertrag_kwh),
-            func.sum(Anlage.kwp)
-        )
-        .join(Anlage)
-        .where(Monatswert.jahr == target_year)
-        .where(Anlage.region == anlage.region)
-    )
-    row = result.first()
-    region_ertrag = row[0] or 0
-    region_kwp = row[1] or 1
-    spez_ertrag_region = region_ertrag / region_kwp
+    # Regions-Durchschnitt
+    spez_ertrag_region = await berechne_region_durchschnitt(db, anlage.region)
 
     # Anzahl Anlagen
     result = await db.execute(select(func.count(Anlage.id)))
@@ -87,27 +120,37 @@ async def get_anlage_benchmark(
     )
     anzahl_region = result.scalar() or 1
 
-    # Rang berechnen (wie viele Anlagen haben höheren spez. Ertrag)
-    result = await db.execute(
-        select(func.count(Anlage.id))
-        .join(Monatswert)
-        .where(Monatswert.jahr == target_year)
-        .group_by(Anlage.id)
-        .having(func.sum(Monatswert.ertrag_kwh) / Anlage.kwp > spez_ertrag_anlage)
-    )
-    bessere_anlagen = len(result.all())
-    rang_gesamt = bessere_anlagen + 1
+    # Rang berechnen - basierend auf spez. Jahresertrag
+    # Hole alle Anlagen mit ihrem spez. Ertrag
+    alle_anlagen = await db.execute(select(Anlage))
+    alle = alle_anlagen.scalars().all()
 
-    result = await db.execute(
-        select(func.count(Anlage.id))
-        .join(Monatswert)
-        .where(Monatswert.jahr == target_year)
-        .where(Anlage.region == anlage.region)
-        .group_by(Anlage.id)
-        .having(func.sum(Monatswert.ertrag_kwh) / Anlage.kwp > spez_ertrag_anlage)
-    )
-    bessere_in_region = len(result.all())
-    rang_region = bessere_in_region + 1
+    ertraege_alle = []
+    ertraege_region = []
+
+    for a in alle:
+        spez = await berechne_spez_jahresertrag(db, a.id, a.kwp)
+        if spez > 0:
+            ertraege_alle.append((a.id, spez))
+            if a.region == anlage.region:
+                ertraege_region.append((a.id, spez))
+
+    # Sortieren (höchster Ertrag zuerst)
+    ertraege_alle.sort(key=lambda x: x[1], reverse=True)
+    ertraege_region.sort(key=lambda x: x[1], reverse=True)
+
+    # Rang finden
+    rang_gesamt = 1
+    for i, (aid, _) in enumerate(ertraege_alle):
+        if aid == anlage.id:
+            rang_gesamt = i + 1
+            break
+
+    rang_region = 1
+    for i, (aid, _) in enumerate(ertraege_region):
+        if aid == anlage.id:
+            rang_region = i + 1
+            break
 
     # Monatswerte mit spez. Ertrag anreichern
     monatswerte_output = [
@@ -143,11 +186,11 @@ async def get_anlage_benchmark(
             spez_ertrag_durchschnitt=round(spez_ertrag_durchschnitt, 1),
             spez_ertrag_region=round(spez_ertrag_region, 1),
             rang_gesamt=rang_gesamt,
-            anzahl_anlagen_gesamt=anzahl_gesamt,
+            anzahl_anlagen_gesamt=len(ertraege_alle),
             rang_region=rang_region,
-            anzahl_anlagen_region=anzahl_region,
+            anzahl_anlagen_region=len(ertraege_region),
         ),
-        "vergleichs_jahr": target_year,
+        "vergleichs_jahr": "letzte 12 Monate",
     }
 
 
@@ -155,69 +198,48 @@ async def get_anlage_benchmark(
 async def get_vergleich(
     kwp: float = Query(..., gt=0, le=100),
     region: str = Query(..., min_length=2, max_length=2),
-    jahr: int = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Liefert Vergleichsdaten für eine Anlage ohne sie zu speichern.
     Nützlich für "Was wäre wenn"-Szenarien.
     """
-    target_year = jahr or (datetime.utcnow().year - 1)
+    # Durchschnitt aller Anlagen mit ähnlicher Größe (±30%)
+    kwp_min = kwp * 0.7
+    kwp_max = kwp * 1.3
 
-    # Durchschnitt aller Anlagen mit ähnlicher Größe (±20%)
-    kwp_min = kwp * 0.8
-    kwp_max = kwp * 1.2
-
-    result = await db.execute(
-        select(
-            func.count(Anlage.id).label("anzahl"),
-            func.sum(Monatswert.ertrag_kwh).label("sum_ertrag"),
-            func.sum(Anlage.kwp).label("sum_kwp"),
-        )
-        .join(Monatswert)
-        .where(Monatswert.jahr == target_year)
+    anlagen_result = await db.execute(
+        select(Anlage)
         .where(Anlage.kwp >= kwp_min)
         .where(Anlage.kwp <= kwp_max)
     )
-    row = result.first()
+    anlagen = anlagen_result.scalars().all()
 
-    if not row or row.anzahl == 0:
+    if not anlagen:
         return {
             "nachricht": "Keine vergleichbaren Anlagen gefunden",
             "vergleichs_anlagen": 0,
         }
 
-    spez_ertrag = row.sum_ertrag / row.sum_kwp if row.sum_kwp > 0 else 0
+    ertraege_alle = []
+    ertraege_region = []
 
-    # Region-spezifisch
-    result = await db.execute(
-        select(
-            func.count(Anlage.id).label("anzahl"),
-            func.sum(Monatswert.ertrag_kwh).label("sum_ertrag"),
-            func.sum(Anlage.kwp).label("sum_kwp"),
-        )
-        .join(Monatswert)
-        .where(Monatswert.jahr == target_year)
-        .where(Anlage.kwp >= kwp_min)
-        .where(Anlage.kwp <= kwp_max)
-        .where(Anlage.region == region.upper())
-    )
-    region_row = result.first()
-    spez_ertrag_region = (
-        region_row.sum_ertrag / region_row.sum_kwp
-        if region_row and region_row.sum_kwp > 0
-        else None
-    )
+    for anlage in anlagen:
+        spez = await berechne_spez_jahresertrag(db, anlage.id, anlage.kwp)
+        if spez > 0:
+            ertraege_alle.append(spez)
+            if anlage.region == region.upper():
+                ertraege_region.append(spez)
+
+    avg_spez = sum(ertraege_alle) / len(ertraege_alle) if ertraege_alle else 0
+    avg_spez_region = sum(ertraege_region) / len(ertraege_region) if ertraege_region else None
 
     return {
         "kwp": kwp,
         "region": region.upper(),
-        "vergleichs_jahr": target_year,
-        "vergleichs_anlagen_gesamt": row.anzahl,
-        "vergleichs_anlagen_region": region_row.anzahl if region_row else 0,
-        "durchschnitt_spez_ertrag": round(spez_ertrag, 1),
-        "durchschnitt_spez_ertrag_region": (
-            round(spez_ertrag_region, 1) if spez_ertrag_region else None
-        ),
-        "erwarteter_jahresertrag_kwh": round(kwp * spez_ertrag, 0),
+        "vergleichs_anlagen_gesamt": len(ertraege_alle),
+        "vergleichs_anlagen_region": len(ertraege_region),
+        "durchschnitt_spez_ertrag": round(avg_spez, 1),
+        "durchschnitt_spez_ertrag_region": round(avg_spez_region, 1) if avg_spez_region else None,
+        "erwarteter_jahresertrag_kwh": round(kwp * avg_spez, 0),
     }
