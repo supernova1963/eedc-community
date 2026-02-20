@@ -255,6 +255,146 @@ async def berechne_community_avg_pv_anteil_eauto(db: AsyncSession) -> float | No
     return sum(pv_anteile) / len(pv_anteile) if pv_anteile else None
 
 
+async def berechne_wallbox_kpis(
+    db: AsyncSession,
+    anlage_id: int,
+    von_jahr: int, von_monat: int,
+    bis_jahr: int, bis_monat: int,
+) -> dict | None:
+    """Berechnet Wallbox-KPIs für einen Zeitraum."""
+    result = await db.execute(
+        select(
+            func.sum(Monatswert.wallbox_ladung_kwh),
+            func.sum(Monatswert.wallbox_ladung_pv_kwh),
+            func.sum(Monatswert.wallbox_ladevorgaenge),
+            func.count(Monatswert.id),
+        )
+        .where(Monatswert.anlage_id == anlage_id)
+        .where(
+            (Monatswert.jahr > von_jahr) |
+            ((Monatswert.jahr == von_jahr) & (Monatswert.monat >= von_monat))
+        )
+        .where(
+            (Monatswert.jahr < bis_jahr) |
+            ((Monatswert.jahr == bis_jahr) & (Monatswert.monat <= bis_monat))
+        )
+    )
+    row = result.first()
+    if not row or not row[0]:
+        return None
+
+    ladung, pv_ladung, ladevorgaenge, monate = row
+    ladung = ladung or 0
+    pv_ladung = pv_ladung or 0
+    ladevorgaenge = ladevorgaenge or 0
+
+    if ladung == 0:
+        return None
+
+    pv_anteil = (pv_ladung / ladung * 100) if ladung > 0 else None
+
+    return {
+        "ladung": round(ladung, 1),
+        "pv_anteil": round(pv_anteil, 1) if pv_anteil else None,
+        "ladevorgaenge": ladevorgaenge if ladevorgaenge > 0 else None,
+    }
+
+
+async def berechne_community_avg_pv_anteil_wallbox(db: AsyncSession) -> float | None:
+    """Berechnet den Community-Durchschnitt für Wallbox PV-Anteil."""
+    result = await db.execute(
+        select(Anlage.id).where(Anlage.hat_wallbox == True)
+    )
+    anlage_ids = [row[0] for row in result.all()]
+
+    if not anlage_ids:
+        return None
+
+    pv_anteile = []
+    for aid in anlage_ids:
+        wb = await berechne_wallbox_kpis(db, aid, 2020, 1, 2099, 12)
+        if wb and wb.get("pv_anteil"):
+            pv_anteile.append(wb["pv_anteil"])
+
+    return sum(pv_anteile) / len(pv_anteile) if pv_anteile else None
+
+
+async def berechne_bkw_kpis(
+    db: AsyncSession,
+    anlage_id: int,
+    bkw_wp: float,
+    von_jahr: int, von_monat: int,
+    bis_jahr: int, bis_monat: int,
+) -> dict | None:
+    """Berechnet Balkonkraftwerk-KPIs für einen Zeitraum."""
+    if bkw_wp <= 0:
+        return None
+
+    result = await db.execute(
+        select(
+            func.sum(Monatswert.bkw_erzeugung_kwh),
+            func.sum(Monatswert.bkw_eigenverbrauch_kwh),
+            func.count(Monatswert.id),
+        )
+        .where(Monatswert.anlage_id == anlage_id)
+        .where(
+            (Monatswert.jahr > von_jahr) |
+            ((Monatswert.jahr == von_jahr) & (Monatswert.monat >= von_monat))
+        )
+        .where(
+            (Monatswert.jahr < bis_jahr) |
+            ((Monatswert.jahr == bis_jahr) & (Monatswert.monat <= bis_monat))
+        )
+    )
+    row = result.first()
+    if not row or not row[0]:
+        return None
+
+    erzeugung, eigenverbrauch, monate = row
+    erzeugung = erzeugung or 0
+    eigenverbrauch = eigenverbrauch or 0
+
+    if erzeugung == 0:
+        return None
+
+    # Spez. Ertrag (auf Jahr hochrechnen)
+    kwp = bkw_wp / 1000  # Wp -> kWp
+    if monate > 0 and monate < 12:
+        jahres_erzeugung = erzeugung * (12 / monate)
+    else:
+        jahres_erzeugung = erzeugung
+
+    spez_ertrag = jahres_erzeugung / kwp if kwp > 0 else 0
+    ev_quote = (eigenverbrauch / erzeugung * 100) if erzeugung > 0 else None
+
+    return {
+        "erzeugung": round(erzeugung, 1),
+        "spez_ertrag": round(spez_ertrag, 0),
+        "eigenverbrauch_quote": round(ev_quote, 1) if ev_quote else None,
+    }
+
+
+async def berechne_community_avg_bkw_spez_ertrag(db: AsyncSession) -> float | None:
+    """Berechnet den Community-Durchschnitt für BKW spez. Ertrag."""
+    result = await db.execute(
+        select(Anlage.id, Anlage.bkw_wp)
+        .where(Anlage.hat_balkonkraftwerk == True)
+        .where(Anlage.bkw_wp > 0)
+    )
+    anlagen = result.all()
+
+    if not anlagen:
+        return None
+
+    spez_ertraege = []
+    for aid, bkw_wp in anlagen:
+        bkw = await berechne_bkw_kpis(db, aid, bkw_wp, 2020, 1, 2099, 12)
+        if bkw and bkw.get("spez_ertrag"):
+            spez_ertraege.append(bkw["spez_ertrag"])
+
+    return sum(spez_ertraege) / len(spez_ertraege) if spez_ertraege else None
+
+
 async def berechne_spez_jahresertrag(db: AsyncSession, anlage_id: int, kwp: float) -> float:
     """Berechnet den spezifischen Jahresertrag für eine Anlage (letzte 12 Monate, hochgerechnet)."""
     if kwp <= 0:
@@ -502,11 +642,43 @@ async def get_anlage_benchmark(
                 v2h=KPIVergleich(wert=eauto_kpis["v2h"]) if eauto_kpis.get("v2h") else None,
             )
 
+    # Wallbox-Benchmark
+    wallbox_benchmark = None
+    if anlage.hat_wallbox:
+        wallbox_kpis = await berechne_wallbox_kpis(db, anlage.id, von_jahr, von_monat, bis_jahr, bis_monat)
+        if wallbox_kpis:
+            community_pv_anteil_wb = await berechne_community_avg_pv_anteil_wallbox(db)
+            wallbox_benchmark = WallboxBenchmark(
+                ladung=KPIVergleich(wert=wallbox_kpis["ladung"]) if wallbox_kpis.get("ladung") else None,
+                pv_anteil=KPIVergleich(
+                    wert=wallbox_kpis["pv_anteil"],
+                    community_avg=round(community_pv_anteil_wb, 1) if community_pv_anteil_wb else None,
+                ) if wallbox_kpis.get("pv_anteil") else None,
+                ladevorgaenge=KPIVergleich(wert=wallbox_kpis["ladevorgaenge"]) if wallbox_kpis.get("ladevorgaenge") else None,
+            )
+
+    # Balkonkraftwerk-Benchmark
+    bkw_benchmark = None
+    if anlage.hat_balkonkraftwerk and anlage.bkw_wp and anlage.bkw_wp > 0:
+        bkw_kpis = await berechne_bkw_kpis(db, anlage.id, anlage.bkw_wp, von_jahr, von_monat, bis_jahr, bis_monat)
+        if bkw_kpis:
+            community_spez_ertrag_bkw = await berechne_community_avg_bkw_spez_ertrag(db)
+            bkw_benchmark = BKWBenchmark(
+                erzeugung=KPIVergleich(wert=bkw_kpis["erzeugung"]) if bkw_kpis.get("erzeugung") else None,
+                spez_ertrag=KPIVergleich(
+                    wert=bkw_kpis["spez_ertrag"],
+                    community_avg=round(community_spez_ertrag_bkw, 0) if community_spez_ertrag_bkw else None,
+                ) if bkw_kpis.get("spez_ertrag") else None,
+                eigenverbrauch=KPIVergleich(wert=bkw_kpis["eigenverbrauch_quote"]) if bkw_kpis.get("eigenverbrauch_quote") else None,
+            )
+
     erweiterte_benchmarks = ErweiterteBenchmarkData(
         pv=pv_benchmark,
         speicher=speicher_benchmark,
         waermepumpe=wp_benchmark,
         eauto=eauto_benchmark,
+        wallbox=wallbox_benchmark,
+        balkonkraftwerk=bkw_benchmark,
     )
 
     # Zeitraum-Label
