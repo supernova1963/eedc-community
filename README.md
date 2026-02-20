@@ -6,12 +6,14 @@ Anonymer Datensammel-Server für PV-Anlagen Vergleichsstatistiken.
 
 ## Features
 
-- Anonyme Datenübertragung (nur Bundesland, keine PLZ/Adresse)
-- Spezifischer Ertrag (kWh/kWp) Vergleich
-- Regionale Statistiken
-- Personalisiertes Benchmark-Dashboard (mit `?anlage=HASH` Parameter)
-- Rate-Limiting und Plausibilitätsprüfung
-- Dashboard mit Recharts-Visualisierungen
+- **Anonyme Datenübertragung** (nur Bundesland, keine PLZ/Adresse)
+- **Spezifischer Ertrag** (kWh/kWp) Vergleich mit Min/Max/Durchschnitt
+- **Regionale Statistiken** und Ranking nach Bundesland
+- **Personalisiertes Benchmark** (mit `?anlage=HASH` Parameter)
+- **Komponenten-Benchmarks** für Speicher, Wärmepumpe, E-Auto, Wallbox, Balkonkraftwerk
+- **Dark Mode** mit System-Präferenz-Erkennung
+- **Rate-Limiting** und Plausibilitätsprüfung
+- **Dashboard** mit Recharts-Visualisierungen
 
 ## Projektstruktur
 
@@ -170,17 +172,18 @@ URL: `https://energy.raunet.eu/`
 Zeigt:
 - Anzahl Anlagen und Monatswerte
 - Durchschnittlicher Jahresertrag
-- Community Highlights (Speicher, WP, E-Auto Anteile)
-- Regionen-Ranking
-- Monatsübersicht
+- Ausstattungs-Verteilung (Speicher, WP, E-Auto, Wallbox, BKW)
+- Community-Trend (12 Monate mit Min/Max/Durchschnitt)
+- Regionen-Ranking nach Jahresertrag
+- Dark Mode (automatisch nach System-Präferenz oder manuell)
 
 ### 2. Personalisiertes Benchmark (mit Parameter)
 URL: `https://energy.raunet.eu/?anlage=HASH`
 
-Vereinfachte Web-Ansicht:
-- PV-Performance Ranking
-- Eigener Ertrag vs. Community-Durchschnitt
-- Ausstattungsvergleich
+Zeigt zusätzlich zur Community-Übersicht:
+- PV-Performance Ranking (gesamt und regional)
+- Eigener Ertrag vs. Community-Durchschnitt (12-Monats-Chart)
+- Deine Ausstattung im Vergleich (PV, Speicher, WP, E-Auto, Wallbox, BKW)
 
 **Detaillierte Analysen:** Die erweiterten Funktionen (Zeitraum-Auswahl, Komponenten-KPIs,
 monatliche Charts) sind im EEDC Add-on unter *Auswertungen → Community* verfügbar.
@@ -194,12 +197,11 @@ monatliche Charts) sind im EEDC Add-on unter *Auswertungen → Community* verfü
 
 ## Tech Stack
 
-- FastAPI + SQLAlchemy (async)
-- PostgreSQL
-- React + Vite + TypeScript
-- Recharts (Visualisierungen)
-- Tailwind CSS
-- Docker + GitHub Actions + Docker Hub
+- **Backend:** FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL
+- **Frontend:** React + Vite + TypeScript + Tailwind CSS
+- **Charts:** Recharts (ComposedChart, LineChart, BarChart)
+- **Deployment:** Docker + GitHub Actions + Docker Hub
+- **UI:** Dark Mode Support, Responsive Design
 
 ## Integration mit EEDC Add-on
 
@@ -208,9 +210,13 @@ Das EEDC Add-on (ab v2.0.3) bietet erweiterte Community-Funktionen:
 | Feature | Web (energy.raunet.eu) | EEDC Add-on |
 |---------|------------------------|-------------|
 | PV-Benchmark (kWh/kWp) | ✓ | ✓ |
+| Regionen-Ranking | ✓ | ✓ |
+| Ausstattungs-Vergleich | ✓ (5 Typen) | ✓ |
+| Community-Trend Chart (Min/Max/Avg) | ✓ | ✓ |
+| Dark Mode | ✓ | ✓ |
 | Zeitraum-Auswahl | - | ✓ |
-| Komponenten-KPIs (Speicher, WP, E-Auto) | - | ✓ |
-| Monatlicher Ertrag-Chart | - | ✓ |
+| Komponenten-KPIs (Speicher, WP, E-Auto, Wallbox, BKW) | - | ✓ |
+| Monatlicher Ertrag-Vergleich | - | ✓ |
 | Detailliertes Ranking | - | ✓ |
 
 **Prinzip:** Die Web-Seite bietet einen schnellen Überblick, das EEDC Add-on
