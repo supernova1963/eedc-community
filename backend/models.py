@@ -35,6 +35,13 @@ class Anlage(Base):
     hat_waermepumpe: Mapped[bool] = mapped_column(Boolean, default=False)
     hat_eauto: Mapped[bool] = mapped_column(Boolean, default=False)
     hat_wallbox: Mapped[bool] = mapped_column(Boolean, default=False)
+    hat_balkonkraftwerk: Mapped[bool] = mapped_column(Boolean, default=False)
+    hat_sonstiges: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Komponenten-Details
+    wallbox_kw: Mapped[float | None] = mapped_column(Float, nullable=True)  # Ladeleistung
+    bkw_wp: Mapped[float | None] = mapped_column(Float, nullable=True)  # BKW Leistung in Wp
+    sonstiges_bezeichnung: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # Metadaten
     erstellt_am: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -66,6 +73,37 @@ class Monatswert(Base):
     # Berechnete Werte
     autarkie_prozent: Mapped[float | None] = mapped_column(Float, nullable=True)
     eigenverbrauch_prozent: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Speicher-KPIs
+    speicher_ladung_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    speicher_entladung_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    speicher_ladung_netz_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Wärmepumpe-KPIs
+    wp_stromverbrauch_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    wp_heizwaerme_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    wp_warmwasser_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # E-Auto-KPIs
+    eauto_ladung_gesamt_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    eauto_ladung_pv_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    eauto_ladung_extern_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    eauto_km: Mapped[float | None] = mapped_column(Float, nullable=True)
+    eauto_v2h_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Wallbox-KPIs
+    wallbox_ladung_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    wallbox_ladung_pv_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    wallbox_ladevorgaenge: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Balkonkraftwerk-KPIs
+    bkw_erzeugung_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bkw_eigenverbrauch_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bkw_speicher_ladung_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bkw_speicher_entladung_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Sonstiges-KPIs
+    sonstiges_verbrauch_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Beziehung
     anlage: Mapped["Anlage"] = relationship(back_populates="monatswerte")

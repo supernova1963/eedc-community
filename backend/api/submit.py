@@ -204,6 +204,11 @@ async def submit_anlage(
         anlage.hat_waermepumpe = data.hat_waermepumpe
         anlage.hat_eauto = data.hat_eauto
         anlage.hat_wallbox = data.hat_wallbox
+        anlage.hat_balkonkraftwerk = data.hat_balkonkraftwerk
+        anlage.hat_sonstiges = data.hat_sonstiges
+        anlage.wallbox_kw = data.wallbox_kw
+        anlage.bkw_wp = data.bkw_wp
+        anlage.sonstiges_bezeichnung = data.sonstiges_bezeichnung
         anlage.update_count += 1
         message = "Anlage aktualisiert"
     else:
@@ -219,6 +224,11 @@ async def submit_anlage(
             hat_waermepumpe=data.hat_waermepumpe,
             hat_eauto=data.hat_eauto,
             hat_wallbox=data.hat_wallbox,
+            hat_balkonkraftwerk=data.hat_balkonkraftwerk,
+            hat_sonstiges=data.hat_sonstiges,
+            wallbox_kw=data.wallbox_kw,
+            bkw_wp=data.bkw_wp,
+            sonstiges_bezeichnung=data.sonstiges_bezeichnung,
         )
         db.add(anlage)
         await db.flush()  # ID generieren
@@ -236,12 +246,37 @@ async def submit_anlage(
         existing = result.scalar_one_or_none()
 
         if existing:
-            # Aktualisieren
+            # Aktualisieren - Basis
             existing.ertrag_kwh = mw.ertrag_kwh
             existing.einspeisung_kwh = mw.einspeisung_kwh
             existing.netzbezug_kwh = mw.netzbezug_kwh
             existing.autarkie_prozent = mw.autarkie_prozent
             existing.eigenverbrauch_prozent = mw.eigenverbrauch_prozent
+            # Speicher
+            existing.speicher_ladung_kwh = mw.speicher_ladung_kwh
+            existing.speicher_entladung_kwh = mw.speicher_entladung_kwh
+            existing.speicher_ladung_netz_kwh = mw.speicher_ladung_netz_kwh
+            # Wärmepumpe
+            existing.wp_stromverbrauch_kwh = mw.wp_stromverbrauch_kwh
+            existing.wp_heizwaerme_kwh = mw.wp_heizwaerme_kwh
+            existing.wp_warmwasser_kwh = mw.wp_warmwasser_kwh
+            # E-Auto
+            existing.eauto_ladung_gesamt_kwh = mw.eauto_ladung_gesamt_kwh
+            existing.eauto_ladung_pv_kwh = mw.eauto_ladung_pv_kwh
+            existing.eauto_ladung_extern_kwh = mw.eauto_ladung_extern_kwh
+            existing.eauto_km = mw.eauto_km
+            existing.eauto_v2h_kwh = mw.eauto_v2h_kwh
+            # Wallbox
+            existing.wallbox_ladung_kwh = mw.wallbox_ladung_kwh
+            existing.wallbox_ladung_pv_kwh = mw.wallbox_ladung_pv_kwh
+            existing.wallbox_ladevorgaenge = mw.wallbox_ladevorgaenge
+            # Balkonkraftwerk
+            existing.bkw_erzeugung_kwh = mw.bkw_erzeugung_kwh
+            existing.bkw_eigenverbrauch_kwh = mw.bkw_eigenverbrauch_kwh
+            existing.bkw_speicher_ladung_kwh = mw.bkw_speicher_ladung_kwh
+            existing.bkw_speicher_entladung_kwh = mw.bkw_speicher_entladung_kwh
+            # Sonstiges
+            existing.sonstiges_verbrauch_kwh = mw.sonstiges_verbrauch_kwh
         else:
             # Neu erstellen
             db.add(Monatswert(
@@ -253,6 +288,31 @@ async def submit_anlage(
                 netzbezug_kwh=mw.netzbezug_kwh,
                 autarkie_prozent=mw.autarkie_prozent,
                 eigenverbrauch_prozent=mw.eigenverbrauch_prozent,
+                # Speicher
+                speicher_ladung_kwh=mw.speicher_ladung_kwh,
+                speicher_entladung_kwh=mw.speicher_entladung_kwh,
+                speicher_ladung_netz_kwh=mw.speicher_ladung_netz_kwh,
+                # Wärmepumpe
+                wp_stromverbrauch_kwh=mw.wp_stromverbrauch_kwh,
+                wp_heizwaerme_kwh=mw.wp_heizwaerme_kwh,
+                wp_warmwasser_kwh=mw.wp_warmwasser_kwh,
+                # E-Auto
+                eauto_ladung_gesamt_kwh=mw.eauto_ladung_gesamt_kwh,
+                eauto_ladung_pv_kwh=mw.eauto_ladung_pv_kwh,
+                eauto_ladung_extern_kwh=mw.eauto_ladung_extern_kwh,
+                eauto_km=mw.eauto_km,
+                eauto_v2h_kwh=mw.eauto_v2h_kwh,
+                # Wallbox
+                wallbox_ladung_kwh=mw.wallbox_ladung_kwh,
+                wallbox_ladung_pv_kwh=mw.wallbox_ladung_pv_kwh,
+                wallbox_ladevorgaenge=mw.wallbox_ladevorgaenge,
+                # Balkonkraftwerk
+                bkw_erzeugung_kwh=mw.bkw_erzeugung_kwh,
+                bkw_eigenverbrauch_kwh=mw.bkw_eigenverbrauch_kwh,
+                bkw_speicher_ladung_kwh=mw.bkw_speicher_ladung_kwh,
+                bkw_speicher_entladung_kwh=mw.bkw_speicher_entladung_kwh,
+                # Sonstiges
+                sonstiges_verbrauch_kwh=mw.sonstiges_verbrauch_kwh,
             ))
 
     # Request für Rate-Limiting speichern

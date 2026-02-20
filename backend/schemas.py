@@ -21,6 +21,37 @@ class MonatswertInput(BaseModel):
     autarkie_prozent: float | None = Field(None, ge=0, le=100)
     eigenverbrauch_prozent: float | None = Field(None, ge=0, le=100)
 
+    # Speicher-KPIs
+    speicher_ladung_kwh: float | None = Field(None, ge=0)
+    speicher_entladung_kwh: float | None = Field(None, ge=0)
+    speicher_ladung_netz_kwh: float | None = Field(None, ge=0)
+
+    # Wärmepumpe-KPIs
+    wp_stromverbrauch_kwh: float | None = Field(None, ge=0)
+    wp_heizwaerme_kwh: float | None = Field(None, ge=0)
+    wp_warmwasser_kwh: float | None = Field(None, ge=0)
+
+    # E-Auto-KPIs
+    eauto_ladung_gesamt_kwh: float | None = Field(None, ge=0)
+    eauto_ladung_pv_kwh: float | None = Field(None, ge=0)
+    eauto_ladung_extern_kwh: float | None = Field(None, ge=0)
+    eauto_km: float | None = Field(None, ge=0)
+    eauto_v2h_kwh: float | None = Field(None, ge=0)
+
+    # Wallbox-KPIs
+    wallbox_ladung_kwh: float | None = Field(None, ge=0)
+    wallbox_ladung_pv_kwh: float | None = Field(None, ge=0)
+    wallbox_ladevorgaenge: int | None = Field(None, ge=0)
+
+    # Balkonkraftwerk-KPIs
+    bkw_erzeugung_kwh: float | None = Field(None, ge=0)
+    bkw_eigenverbrauch_kwh: float | None = Field(None, ge=0)
+    bkw_speicher_ladung_kwh: float | None = Field(None, ge=0)
+    bkw_speicher_entladung_kwh: float | None = Field(None, ge=0)
+
+    # Sonstiges-KPIs
+    sonstiges_verbrauch_kwh: float | None = Field(None, ge=0)
+
     @field_validator("ertrag_kwh")
     @classmethod
     def validate_ertrag(cls, v: float, info) -> float:
@@ -49,6 +80,13 @@ class AnlageSubmitInput(BaseModel):
     hat_waermepumpe: bool = False
     hat_eauto: bool = False
     hat_wallbox: bool = False
+    hat_balkonkraftwerk: bool = False
+    hat_sonstiges: bool = False
+
+    # Komponenten-Details
+    wallbox_kw: float | None = Field(None, ge=0, le=50)  # Ladeleistung in kW
+    bkw_wp: float | None = Field(None, ge=0, le=2000)  # BKW Leistung in Wp
+    sonstiges_bezeichnung: str | None = Field(None, max_length=100)
 
     # Monatswerte
     monatswerte: list[MonatswertInput] = Field(..., min_length=1)
@@ -94,6 +132,37 @@ class MonatswertOutput(BaseModel):
     eigenverbrauch_prozent: float | None
     spez_ertrag_kwh_kwp: float | None = None  # Berechnet
 
+    # Speicher-KPIs
+    speicher_ladung_kwh: float | None = None
+    speicher_entladung_kwh: float | None = None
+    speicher_ladung_netz_kwh: float | None = None
+
+    # Wärmepumpe-KPIs
+    wp_stromverbrauch_kwh: float | None = None
+    wp_heizwaerme_kwh: float | None = None
+    wp_warmwasser_kwh: float | None = None
+
+    # E-Auto-KPIs
+    eauto_ladung_gesamt_kwh: float | None = None
+    eauto_ladung_pv_kwh: float | None = None
+    eauto_ladung_extern_kwh: float | None = None
+    eauto_km: float | None = None
+    eauto_v2h_kwh: float | None = None
+
+    # Wallbox-KPIs
+    wallbox_ladung_kwh: float | None = None
+    wallbox_ladung_pv_kwh: float | None = None
+    wallbox_ladevorgaenge: int | None = None
+
+    # Balkonkraftwerk-KPIs
+    bkw_erzeugung_kwh: float | None = None
+    bkw_eigenverbrauch_kwh: float | None = None
+    bkw_speicher_ladung_kwh: float | None = None
+    bkw_speicher_entladung_kwh: float | None = None
+
+    # Sonstiges-KPIs
+    sonstiges_verbrauch_kwh: float | None = None
+
 
 class AnlageOutput(BaseModel):
     """Anlage in der Ausgabe (ohne sensible Daten)."""
@@ -107,6 +176,11 @@ class AnlageOutput(BaseModel):
     hat_waermepumpe: bool
     hat_eauto: bool
     hat_wallbox: bool
+    hat_balkonkraftwerk: bool = False
+    hat_sonstiges: bool = False
+    wallbox_kw: float | None = None
+    bkw_wp: float | None = None
+    sonstiges_bezeichnung: str | None = None
     monatswerte: list[MonatswertOutput]
 
     class Config:
@@ -132,6 +206,71 @@ class BenchmarkData(BaseModel):
     anzahl_anlagen_gesamt: int
     rang_region: int  # Platzierung in Region
     anzahl_anlagen_region: int
+
+
+class KPIVergleich(BaseModel):
+    """Ein einzelner KPI-Vergleichswert."""
+    wert: float
+    community_avg: float | None = None
+    rang: int | None = None
+    von: int | None = None
+
+
+class SpeicherBenchmark(BaseModel):
+    """Benchmark-Daten für Speicher."""
+    kapazitaet: KPIVergleich | None = None
+    zyklen_jahr: KPIVergleich | None = None
+    nutzungsgrad: KPIVergleich | None = None
+    wirkungsgrad: KPIVergleich | None = None
+    netz_anteil: KPIVergleich | None = None
+
+
+class WaermepumpeBenchmark(BaseModel):
+    """Benchmark-Daten für Wärmepumpe."""
+    jaz: KPIVergleich | None = None
+    stromverbrauch: KPIVergleich | None = None
+    waermeerzeugung: KPIVergleich | None = None
+    pv_anteil: KPIVergleich | None = None
+
+
+class EAutoBenchmark(BaseModel):
+    """Benchmark-Daten für E-Auto."""
+    ladung_gesamt: KPIVergleich | None = None
+    pv_anteil: KPIVergleich | None = None
+    km: KPIVergleich | None = None
+    verbrauch_100km: KPIVergleich | None = None
+    v2h: KPIVergleich | None = None
+
+
+class WallboxBenchmark(BaseModel):
+    """Benchmark-Daten für Wallbox."""
+    ladung: KPIVergleich | None = None
+    pv_anteil: KPIVergleich | None = None
+    ladevorgaenge: KPIVergleich | None = None
+
+
+class BKWBenchmark(BaseModel):
+    """Benchmark-Daten für Balkonkraftwerk."""
+    erzeugung: KPIVergleich | None = None
+    spez_ertrag: KPIVergleich | None = None
+    eigenverbrauch: KPIVergleich | None = None
+
+
+class PVBenchmark(BaseModel):
+    """Benchmark-Daten für PV-Anlage."""
+    spez_ertrag: KPIVergleich
+    eigenverbrauch: KPIVergleich | None = None
+    autarkie: KPIVergleich | None = None
+
+
+class ErweiterteBenchmarkData(BaseModel):
+    """Erweiterte Benchmark-Daten mit allen Komponenten."""
+    pv: PVBenchmark
+    speicher: SpeicherBenchmark | None = None
+    waermepumpe: WaermepumpeBenchmark | None = None
+    eauto: EAutoBenchmark | None = None
+    wallbox: WallboxBenchmark | None = None
+    balkonkraftwerk: BKWBenchmark | None = None
 
 
 class DeleteResponse(BaseModel):
