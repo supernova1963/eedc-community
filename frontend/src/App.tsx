@@ -228,54 +228,6 @@ function navigateTo(page: 'main' | 'impressum' | 'datenschutz') {
   window.dispatchEvent(new PopStateEvent('popstate'))
 }
 
-// Komponenten-Icons (als Unicode-Emoji)
-const KOMPONENTEN_ICONS: Record<string, string> = {
-  pv: '☀️',
-  speicher: '🔋',
-  waermepumpe: '🌡️',
-  eauto: '🚗',
-  wallbox: '⚡',
-  balkonkraftwerk: '🌻',
-}
-
-// Zeitraum-Konstanten und Labels
-const ZEITRAUM_LABELS: Record<ZeitraumTyp, string> = {
-  letzter_monat: 'Letzter Monat',
-  letzte_12_monate: 'Letzte 12 Monate',
-  letztes_vollstaendiges_jahr: 'Letztes vollständiges Jahr',
-  jahr: 'Aktuelles Jahr',
-  seit_installation: 'Seit Installation',
-}
-
-// Zeitraum-Auswahl Komponente
-function ZeitraumSelect({
-  value,
-  onChange,
-  disabled = false,
-}: {
-  value: ZeitraumTyp
-  onChange: (zeitraum: ZeitraumTyp) => void
-  disabled?: boolean
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <label className="text-sm text-orange-100">Zeitraum:</label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value as ZeitraumTyp)}
-        disabled={disabled}
-        className="bg-white/20 text-white border border-orange-300/50 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-white/50 disabled:opacity-50"
-      >
-        {(Object.keys(ZEITRAUM_LABELS) as ZeitraumTyp[]).map((z) => (
-          <option key={z} value={z} className="text-gray-900">
-            {ZEITRAUM_LABELS[z]}
-          </option>
-        ))}
-      </select>
-    </div>
-  )
-}
-
 // Footer-Komponente
 function Footer() {
   return (
@@ -335,226 +287,6 @@ function KPICard({ title, value, unit, subtitle, highlight, comparison }: {
         </p>
       )}
       {subtitle && <p className={`mt-1 text-sm ${highlight ? 'text-orange-100' : 'text-gray-500'}`}>{subtitle}</p>}
-    </div>
-  )
-}
-
-// KPI-Vergleich Anzeige (einzelner Wert mit Community-Vergleich)
-function KPIVergleichItem({
-  label,
-  kpi,
-  einheit,
-  format = 'number',
-  besserWennHoeher = true,
-}: {
-  label: string
-  kpi: KPIVergleich
-  einheit?: string
-  format?: 'number' | 'percent' | 'decimal'
-  besserWennHoeher?: boolean
-}) {
-  const formatValue = (v: number) => {
-    if (format === 'percent') return `${v.toFixed(1)}%`
-    if (format === 'decimal') return v.toFixed(2)
-    return v.toFixed(1)
-  }
-
-  const diff = kpi.community_avg ? kpi.wert - kpi.community_avg : null
-  const isGood = diff !== null ? (besserWennHoeher ? diff >= 0 : diff <= 0) : null
-
-  return (
-    <div className="flex items-center justify-between py-2 border-b last:border-0 border-gray-100">
-      <span className="text-sm text-gray-600">{label}</span>
-      <div className="flex items-center gap-3">
-        <span className="font-semibold text-gray-900">
-          {formatValue(kpi.wert)}
-          {einheit && <span className="text-xs text-gray-500 ml-0.5">{einheit}</span>}
-        </span>
-        {kpi.community_avg !== null && (
-          <span className={`text-xs px-2 py-0.5 rounded-full ${
-            isGood ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-          }`}>
-            {diff !== null && diff >= 0 ? '+' : ''}{diff?.toFixed(1)} vs Ø
-          </span>
-        )}
-        {kpi.rang !== null && kpi.von !== null && (
-          <span className="text-xs text-gray-400">
-            #{kpi.rang}/{kpi.von}
-          </span>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// Komponenten-Benchmark Karte
-function KomponentenKarte({
-  titel,
-  icon,
-  kpis,
-  isEmpty = false,
-}: {
-  titel: string
-  icon: string
-  kpis: { label: string; kpi: KPIVergleich | null; einheit?: string; format?: 'number' | 'percent' | 'decimal'; besserWennHoeher?: boolean }[]
-  isEmpty?: boolean
-}) {
-  const activeKpis = kpis.filter(k => k.kpi !== null)
-
-  if (isEmpty || activeKpis.length === 0) {
-    return null
-  }
-
-  return (
-    <div className="bg-white rounded-lg shadow p-5">
-      <div className="flex items-center gap-2 mb-4">
-        <span className="text-2xl">{icon}</span>
-        <h3 className="text-lg font-semibold text-gray-900">{titel}</h3>
-      </div>
-      <div className="space-y-1">
-        {activeKpis.map((k, i) => (
-          <KPIVergleichItem
-            key={i}
-            label={k.label}
-            kpi={k.kpi!}
-            einheit={k.einheit}
-            format={k.format}
-            besserWennHoeher={k.besserWennHoeher}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// Speicher-Karte
-function SpeicherKarte({ data }: { data: SpeicherBenchmark | null }) {
-  if (!data) return null
-
-  return (
-    <KomponentenKarte
-      titel="Speicher"
-      icon={KOMPONENTEN_ICONS.speicher}
-      kpis={[
-        { label: 'Kapazität', kpi: data.kapazitaet, einheit: 'kWh' },
-        { label: 'Zyklen/Jahr', kpi: data.zyklen_jahr },
-        { label: 'Nutzungsgrad', kpi: data.nutzungsgrad, einheit: '%', format: 'percent' },
-        { label: 'Wirkungsgrad', kpi: data.wirkungsgrad, einheit: '%', format: 'percent' },
-        { label: 'Netzanteil', kpi: data.netz_anteil, einheit: '%', format: 'percent', besserWennHoeher: false },
-      ]}
-    />
-  )
-}
-
-// Wärmepumpe-Karte
-function WaermepumpeKarte({ data }: { data: WaermepumpeBenchmark | null }) {
-  if (!data) return null
-
-  return (
-    <KomponentenKarte
-      titel="Wärmepumpe"
-      icon={KOMPONENTEN_ICONS.waermepumpe}
-      kpis={[
-        { label: 'JAZ', kpi: data.jaz, format: 'decimal' },
-        { label: 'Stromverbrauch', kpi: data.stromverbrauch, einheit: 'kWh', besserWennHoeher: false },
-        { label: 'Wärmeerzeugung', kpi: data.waermeerzeugung, einheit: 'kWh' },
-        { label: 'PV-Anteil', kpi: data.pv_anteil, einheit: '%', format: 'percent' },
-      ]}
-    />
-  )
-}
-
-// E-Auto-Karte
-function EAutoKarte({ data }: { data: EAutoBenchmark | null }) {
-  if (!data) return null
-
-  return (
-    <KomponentenKarte
-      titel="E-Auto"
-      icon={KOMPONENTEN_ICONS.eauto}
-      kpis={[
-        { label: 'Ladung gesamt', kpi: data.ladung_gesamt, einheit: 'kWh' },
-        { label: 'PV-Anteil', kpi: data.pv_anteil, einheit: '%', format: 'percent' },
-        { label: 'Kilometer', kpi: data.km, einheit: 'km' },
-        { label: 'Verbrauch', kpi: data.verbrauch_100km, einheit: 'kWh/100km', besserWennHoeher: false },
-        { label: 'V2H', kpi: data.v2h, einheit: 'kWh' },
-      ]}
-    />
-  )
-}
-
-// Wallbox-Karte
-function WallboxKarte({ data }: { data: WallboxBenchmark | null }) {
-  if (!data) return null
-
-  return (
-    <KomponentenKarte
-      titel="Wallbox"
-      icon={KOMPONENTEN_ICONS.wallbox}
-      kpis={[
-        { label: 'Ladung', kpi: data.ladung, einheit: 'kWh' },
-        { label: 'PV-Anteil', kpi: data.pv_anteil, einheit: '%', format: 'percent' },
-        { label: 'Ladevorgänge', kpi: data.ladevorgaenge },
-      ]}
-    />
-  )
-}
-
-// BKW-Karte
-function BKWKarte({ data }: { data: BKWBenchmark | null }) {
-  if (!data) return null
-
-  return (
-    <KomponentenKarte
-      titel="Balkonkraftwerk"
-      icon={KOMPONENTEN_ICONS.balkonkraftwerk}
-      kpis={[
-        { label: 'Erzeugung', kpi: data.erzeugung, einheit: 'kWh' },
-        { label: 'Spez. Ertrag', kpi: data.spez_ertrag, einheit: 'kWh/kWp' },
-        { label: 'Eigenverbrauch', kpi: data.eigenverbrauch, einheit: '%', format: 'percent' },
-      ]}
-    />
-  )
-}
-
-// PV-Benchmark-Karte (erweitert)
-function PVKarte({ data }: { data: PVBenchmark }) {
-  return (
-    <KomponentenKarte
-      titel="PV-Anlage"
-      icon={KOMPONENTEN_ICONS.pv}
-      kpis={[
-        { label: 'Spez. Ertrag', kpi: data.spez_ertrag, einheit: 'kWh/kWp' },
-        { label: 'Eigenverbrauch', kpi: data.eigenverbrauch, einheit: '%', format: 'percent' },
-        { label: 'Autarkie', kpi: data.autarkie, einheit: '%', format: 'percent' },
-      ]}
-    />
-  )
-}
-
-// Komponenten-Benchmarks Container
-function KomponentenBenchmarks({ data }: { data: ErweiterteBenchmarkData | undefined }) {
-  if (!data) {
-    return null
-  }
-
-  const hatKomponenten = data.speicher || data.waermepumpe || data.eauto || data.wallbox || data.balkonkraftwerk
-
-  return (
-    <div className="space-y-6">
-      {/* PV ist immer da */}
-      <PVKarte data={data.pv} />
-
-      {/* Optionale Komponenten */}
-      {hatKomponenten && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <SpeicherKarte data={data.speicher} />
-          <WaermepumpeKarte data={data.waermepumpe} />
-          <EAutoKarte data={data.eauto} />
-          <WallboxKarte data={data.wallbox} />
-          <BKWKarte data={data.balkonkraftwerk} />
-        </div>
-      )}
     </div>
   )
 }
@@ -769,62 +501,31 @@ function CommunityHighlights({ stats }: { stats: GesamtStatistik }) {
   )
 }
 
-// Personalisierte Ansicht
+// Personalisierte Ansicht (vereinfacht - Details im EEDC Add-on)
 function PersonalizedView({
   benchmark,
   stats,
-  zeitraum,
-  onZeitraumChange,
-  loading = false,
 }: {
   benchmark: AnlageBenchmark
   stats: GesamtStatistik
-  zeitraum: ZeitraumTyp
-  onZeitraumChange: (z: ZeitraumTyp) => void
-  loading?: boolean
 }) {
-  const { anlage, benchmark: bm, benchmark_erweitert, zeitraum_label } = benchmark
+  const { anlage, benchmark: bm } = benchmark
   const abweichungGesamt = ((bm.spez_ertrag_anlage - bm.spez_ertrag_durchschnitt) / bm.spez_ertrag_durchschnitt) * 100
   const abweichungRegion = ((bm.spez_ertrag_anlage - bm.spez_ertrag_region) / bm.spez_ertrag_region) * 100
 
-  // Prüfe ob Komponenten-Benchmarks vorhanden sind
-  const hatKomponenten = benchmark_erweitert && (
-    benchmark_erweitert.speicher ||
-    benchmark_erweitert.waermepumpe ||
-    benchmark_erweitert.eauto ||
-    benchmark_erweitert.wallbox ||
-    benchmark_erweitert.balkonkraftwerk
-  )
-
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header mit Zeitraum-Auswahl */}
+      {/* Header */}
       <header className="bg-gradient-to-r from-orange-500 to-amber-500 text-white py-8">
         <div className="max-w-6xl mx-auto px-4">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <p className="text-orange-100 mb-1">EEDC Community</p>
-              <h1 className="text-3xl font-bold mb-2">Dein PV-Anlagen Benchmark</h1>
-              <p className="text-orange-100">
-                {anlage.kwp} kWp | {REGION_NAMEN[anlage.region] || anlage.region} | seit {anlage.installation_jahr}
-              </p>
-            </div>
-            <div className="flex items-center gap-4">
-              <ZeitraumSelect
-                value={zeitraum}
-                onChange={onZeitraumChange}
-                disabled={loading}
-              />
-              {loading && (
-                <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-white"></div>
-              )}
-            </div>
-          </div>
-          {zeitraum_label && (
-            <p className="text-orange-200 text-sm mt-2">
-              Auswertungszeitraum: {zeitraum_label}
-            </p>
-          )}
+          <p className="text-orange-100 mb-1">EEDC Community</p>
+          <h1 className="text-3xl font-bold mb-2">Dein Anlagen-Benchmark</h1>
+          <p className="text-orange-100">
+            {anlage.kwp} kWp | {REGION_NAMEN[anlage.region] || anlage.region} | seit {anlage.installation_jahr}
+          </p>
+          <p className="text-orange-200 text-sm mt-2">
+            Vergleichszeitraum: Jahresertrag {benchmark.vergleichs_jahr}
+          </p>
         </div>
       </header>
 
@@ -834,7 +535,7 @@ function PersonalizedView({
           <RankingBadge rang={bm.rang_gesamt} total={bm.anzahl_anlagen_gesamt} label="Rang Deutschland" />
           <RankingBadge rang={bm.rang_region} total={bm.anzahl_anlagen_region} label={`Rang ${REGION_NAMEN[anlage.region] || anlage.region}`} />
           <KPICard
-            title="Dein spez. Ertrag"
+            title="Dein Jahresertrag"
             value={bm.spez_ertrag_anlage.toFixed(0)}
             unit="kWh/kWp"
             highlight
@@ -864,36 +565,33 @@ function PersonalizedView({
           />
         </div>
 
-        {/* Komponenten-Benchmarks (nur wenn erweiterte Daten vorhanden) */}
-        {hatKomponenten && (
-          <div className="mb-8">
-            <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <span>📊</span>
-              Komponenten-Benchmarks
-            </h2>
-            <KomponentenBenchmarks data={benchmark_erweitert} />
-          </div>
-        )}
-
-        {/* Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        {/* Dein Monatsverlauf vs. Community */}
+        <div className="mb-8">
           <ComparisonChart anlageData={anlage.monatswerte} communityData={stats.letzte_monate} />
-          <AusstattungVergleich anlage={anlage} stats={stats} />
         </div>
 
-        {/* Regionen-Ranking */}
-        <div className="mb-8">
+        {/* Ausstattung und Regionen */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <AusstattungVergleich anlage={anlage} stats={stats} />
           <RegionenRanking regionen={stats.regionen} meineRegion={anlage.region} />
         </div>
 
-        {/* Vergleichsjahr-Info */}
-        <div className="text-center text-sm text-gray-500 mt-8">
-          <p>Vergleichsjahr: {benchmark.vergleichs_jahr}</p>
-          <p className="mt-2">
-            <a href="/" className="text-orange-600 hover:underline">
-              ← Zur Community-Übersicht
-            </a>
+        {/* Hinweis auf Details im Add-on */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center mb-8">
+          <h3 className="text-lg font-semibold text-blue-800 mb-2">
+            Detaillierte Analysen im EEDC Add-on
+          </h3>
+          <p className="text-blue-700 text-sm">
+            Für zeitraumbezogene Auswertungen, Komponenten-Benchmarks (Speicher, Wärmepumpe, E-Auto)
+            und weitere Details nutze den Community-Vergleich in deiner lokalen EEDC-Installation.
           </p>
+        </div>
+
+        {/* Link zurück */}
+        <div className="text-center text-sm text-gray-500">
+          <a href="/" className="text-orange-600 hover:underline">
+            ← Zur Community-Übersicht
+          </a>
         </div>
 
         {/* Footer */}
@@ -1255,10 +953,8 @@ export default function App() {
   const [stats, setStats] = useState<GesamtStatistik | null>(null)
   const [benchmark, setBenchmark] = useState<AnlageBenchmark | null>(null)
   const [loading, setLoading] = useState(true)
-  const [benchmarkLoading, setBenchmarkLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState<'main' | 'impressum' | 'datenschutz'>(getCurrentPage())
-  const [zeitraum, setZeitraum] = useState<ZeitraumTyp>('letzte_12_monate')
 
   const anlageHash = getAnlageHash()
 
@@ -1271,29 +967,6 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
 
-  // Benchmark bei Zeitraum-Änderung neu laden
-  const loadBenchmark = async (z: ZeitraumTyp) => {
-    if (!anlageHash) return
-
-    setBenchmarkLoading(true)
-    try {
-      const benchmarkRes = await fetch(`/api/benchmark/anlage/${anlageHash}?zeitraum=${z}`)
-      if (benchmarkRes.ok) {
-        const benchmarkData = await benchmarkRes.json()
-        setBenchmark(benchmarkData)
-      }
-    } catch (err) {
-      console.error('Fehler beim Laden des Benchmarks:', err)
-    } finally {
-      setBenchmarkLoading(false)
-    }
-  }
-
-  const handleZeitraumChange = (z: ZeitraumTyp) => {
-    setZeitraum(z)
-    loadBenchmark(z)
-  }
-
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -1303,9 +976,9 @@ export default function App() {
         const statsData = await statsRes.json()
         setStats(statsData)
 
-        // Wenn anlage Parameter vorhanden, Benchmark laden
+        // Wenn anlage Parameter vorhanden, Benchmark laden (immer Jahresertrag)
         if (anlageHash) {
-          const benchmarkRes = await fetch(`/api/benchmark/anlage/${anlageHash}?zeitraum=${zeitraum}`)
+          const benchmarkRes = await fetch(`/api/benchmark/anlage/${anlageHash}`)
           if (benchmarkRes.ok) {
             const benchmarkData = await benchmarkRes.json()
             setBenchmark(benchmarkData)
@@ -1321,7 +994,7 @@ export default function App() {
     }
 
     loadData()
-  }, [anlageHash]) // zeitraum absichtlich nicht in deps, da handleZeitraumChange das übernimmt
+  }, [anlageHash])
 
   if (loading) {
     return (
@@ -1396,9 +1069,6 @@ export default function App() {
       <PersonalizedView
         benchmark={benchmark}
         stats={stats}
-        zeitraum={zeitraum}
-        onZeitraumChange={handleZeitraumChange}
-        loading={benchmarkLoading}
       />
     )
   }
