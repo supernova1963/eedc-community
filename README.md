@@ -177,11 +177,13 @@ Zeigt:
 ### 2. Personalisiertes Benchmark (mit Parameter)
 URL: `https://energy.raunet.eu/?anlage=HASH`
 
-Zeigt:
-- Ranking (Deutschland + Region)
+Vereinfachte Web-Ansicht:
+- PV-Performance Ranking
 - Eigener Ertrag vs. Community-Durchschnitt
 - Ausstattungsvergleich
-- Vergleichschart über Zeit
+
+**Detaillierte Analysen:** Die erweiterten Funktionen (Zeitraum-Auswahl, Komponenten-KPIs,
+monatliche Charts) sind im EEDC Add-on unter *Auswertungen → Community* verfügbar.
 
 ## Datenschutz
 
@@ -199,13 +201,34 @@ Zeigt:
 - Tailwind CSS
 - Docker + GitHub Actions + Docker Hub
 
-## Roadmap
+## Integration mit EEDC Add-on
 
-Siehe `PLAN_COMMUNITY_DASHBOARD_v2.md` für geplante Erweiterungen:
-- Erweiterte KPIs (JAZ, PV-Anteile, Speicher-Zyklen)
-- Zeitraum-Auswahl (letzte 12 Monate, Jahr, seit Installation)
-- Historische Trends
-- Komponenten-spezifische Benchmarks (WP, E-Auto, Wallbox, BKW)
+Das EEDC Add-on (ab v2.0.3) bietet erweiterte Community-Funktionen:
+
+| Feature | Web (energy.raunet.eu) | EEDC Add-on |
+|---------|------------------------|-------------|
+| PV-Benchmark (kWh/kWp) | ✓ | ✓ |
+| Zeitraum-Auswahl | - | ✓ |
+| Komponenten-KPIs (Speicher, WP, E-Auto) | - | ✓ |
+| Monatlicher Ertrag-Chart | - | ✓ |
+| Detailliertes Ranking | - | ✓ |
+
+**Prinzip:** Die Web-Seite bietet einen schnellen Überblick, das EEDC Add-on
+ermöglicht umfassende Analysen (da dort alle Daten lokal vorliegen).
+
+### Architektur
+
+```
+EEDC Add-on                          Community Server
+┌─────────────────────┐              ┌─────────────────┐
+│ CommunityShare.tsx  │ ─ POST ────→ │ /api/submit     │
+│                     │              │                 │
+│ CommunityVergleich  │ ─ Proxy ───→ │ /api/benchmark/ │
+│ .tsx (embedded)     │              │ anlage/{hash}   │
+│                     │              │                 │
+│ "Im Browser öffnen" │ ─ Link ────→ │ /?anlage=HASH   │
+└─────────────────────┘              └─────────────────┘
+```
 
 ## Lizenz
 
