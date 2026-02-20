@@ -10,6 +10,7 @@ import {
   LineChart,
   Line,
   Legend,
+  ComposedChart,
 } from 'recharts'
 import Impressum from './pages/Impressum'
 import Datenschutz from './pages/Datenschutz'
@@ -466,7 +467,7 @@ function MonatsverlaufChart({ monate }: { monate: MonatsStatistik[] }) {
         Community-Ertrag (kWh/kWp) - Letzte 12 Monate
       </h3>
       <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={data}>
+        <ComposedChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
           <XAxis dataKey="name" tick={{ fill: '#9ca3af' }} />
           <YAxis domain={[0, 'auto']} tick={{ fill: '#9ca3af' }} />
@@ -478,8 +479,11 @@ function MonatsverlaufChart({ monate }: { monate: MonatsStatistik[] }) {
             contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }}
             labelStyle={{ color: '#f3f4f6' }}
           />
+          <Legend wrapperStyle={{ color: '#9ca3af' }} />
           <Bar dataKey="durchschnitt" fill="#f59e0b" name="Ø Ertrag" radius={[4, 4, 0, 0]} />
-        </BarChart>
+          <Line type="monotone" dataKey="max" stroke="#22c55e" strokeWidth={2} strokeDasharray="4 2" name="Maximum" dot={false} />
+          <Line type="monotone" dataKey="min" stroke="#9ca3af" strokeWidth={2} strokeDasharray="4 2" name="Minimum" dot={false} />
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   )
