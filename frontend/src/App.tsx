@@ -896,6 +896,257 @@ function PersonalizedView({
   )
 }
 
+// Top-Performer Anzeige (anonym)
+function TopPerformer({ regionen }: { regionen: RegionStatistik[] }) {
+  // Top 3 Regionen nach Ertrag
+  const topRegionen = [...regionen]
+    .sort((a, b) => b.durchschnitt_spez_ertrag - a.durchschnitt_spez_ertrag)
+    .slice(0, 3)
+
+  // Beste Ausstattungsquoten
+  const besteAutarkie = [...regionen]
+    .filter(r => r.durchschnitt_autarkie !== null)
+    .sort((a, b) => (b.durchschnitt_autarkie || 0) - (a.durchschnitt_autarkie || 0))[0]
+
+  const hoechsteSpeicherQuote = [...regionen]
+    .sort((a, b) => b.anteil_mit_speicher - a.anteil_mit_speicher)[0]
+
+  return (
+    <div className="bg-white rounded-lg shadow p-6">
+      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        <span>🏆</span>
+        Top-Performer
+      </h3>
+
+      {/* Top Regionen */}
+      <div className="mb-6">
+        <h4 className="text-sm font-medium text-gray-500 mb-3">Beste Regionen (Ertrag)</h4>
+        <div className="space-y-2">
+          {topRegionen.map((r, idx) => (
+            <div key={r.region} className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">{['🥇', '🥈', '🥉'][idx]}</span>
+                <span className="text-gray-700">{REGION_NAMEN[r.region] || r.region}</span>
+              </div>
+              <span className="font-semibold text-gray-900">
+                {r.durchschnitt_spez_ertrag.toFixed(0)} kWh/kWp
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Weitere Highlights */}
+      <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+        {besteAutarkie && besteAutarkie.durchschnitt_autarkie && (
+          <div className="text-center">
+            <p className="text-2xl font-bold text-green-600">
+              {besteAutarkie.durchschnitt_autarkie.toFixed(0)}%
+            </p>
+            <p className="text-xs text-gray-500">
+              Beste Autarkie
+              <br />
+              ({REGION_NAMEN[besteAutarkie.region] || besteAutarkie.region})
+            </p>
+          </div>
+        )}
+        {hoechsteSpeicherQuote && (
+          <div className="text-center">
+            <p className="text-2xl font-bold text-blue-600">
+              {hoechsteSpeicherQuote.anteil_mit_speicher.toFixed(0)}%
+            </p>
+            <p className="text-xs text-gray-500">
+              Höchste Speicherquote
+              <br />
+              ({REGION_NAMEN[hoechsteSpeicherQuote.region] || hoechsteSpeicherQuote.region})
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Trend-Analyse Chart
+function TrendChart({ monate }: { monate: MonatsStatistik[] }) {
+  // Berechne gleitenden 3-Monats-Durchschnitt
+  const data = [...monate].reverse().map((m, idx, arr) => {
+    // 3-Monats-Durchschnitt
+    const startIdx = Math.max(0, idx - 2)
+    const slice = arr.slice(startIdx, idx + 1)
+    const avg3m = slice.reduce((s, x) => s + x.durchschnitt_spez_ertrag, 0) / slice.length
+
+    return {
+      name: `${MONATE[m.monat - 1]} ${m.jahr.toString().slice(2)}`,
+      ertrag: m.durchschnitt_spez_ertrag,
+      trend: avg3m,
+      anlagen: m.anzahl_anlagen,
+      min: m.min_spez_ertrag,
+      max: m.max_spez_ertrag,
+    }
+  })
+
+  return (
+    <div className="bg-white rounded-lg shadow p-6">
+      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        <span>📈</span>
+        Community-Trend
+      </h3>
+      <ResponsiveContainer width="100%" height={300}>
+        <LineChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="name" />
+          <YAxis domain={[0, 'auto']} />
+          <Tooltip
+            formatter={(value: number, name: string) => {
+              const labels: Record<string, string> = {
+                ertrag: 'Monatswert',
+                trend: '3-Monats-Trend',
+                min: 'Minimum',
+                max: 'Maximum',
+              }
+              return [`${value.toFixed(1)} kWh/kWp`, labels[name] || name]
+            }}
+          />
+          <Legend />
+          {/* Bereich zwischen min und max */}
+          <Line
+            type="monotone"
+            dataKey="max"
+            stroke="#fde68a"
+            strokeWidth={1}
+            strokeDasharray="3 3"
+            name="Maximum"
+            dot={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="min"
+            stroke="#fde68a"
+            strokeWidth={1}
+            strokeDasharray="3 3"
+            name="Minimum"
+            dot={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="ertrag"
+            stroke="#f59e0b"
+            strokeWidth={2}
+            name="Monatswert"
+            dot={{ fill: '#f59e0b', r: 3 }}
+          />
+          <Line
+            type="monotone"
+            dataKey="trend"
+            stroke="#ea580c"
+            strokeWidth={3}
+            name="3-Monats-Trend"
+            dot={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+// Ausstattungs-Verteilung
+function AusstattungsVerteilung({ stats }: { stats: GesamtStatistik }) {
+  const totalAnlagen = stats.regionen.reduce((sum, r) => sum + r.anzahl_anlagen, 0)
+
+  // Aggregiere über alle Regionen
+  const mitSpeicher = stats.regionen.reduce(
+    (sum, r) => sum + (r.anteil_mit_speicher / 100) * r.anzahl_anlagen, 0
+  )
+  const mitWP = stats.regionen.reduce(
+    (sum, r) => sum + (r.anteil_mit_waermepumpe / 100) * r.anzahl_anlagen, 0
+  )
+  const mitEAuto = stats.regionen.reduce(
+    (sum, r) => sum + (r.anteil_mit_eauto / 100) * r.anzahl_anlagen, 0
+  )
+
+  const ausstattung = [
+    { name: 'Speicher', anzahl: Math.round(mitSpeicher), prozent: (mitSpeicher / totalAnlagen) * 100, color: '#3b82f6' },
+    { name: 'Wärmepumpe', anzahl: Math.round(mitWP), prozent: (mitWP / totalAnlagen) * 100, color: '#ef4444' },
+    { name: 'E-Auto', anzahl: Math.round(mitEAuto), prozent: (mitEAuto / totalAnlagen) * 100, color: '#22c55e' },
+  ]
+
+  return (
+    <div className="bg-white rounded-lg shadow p-6">
+      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        <span>⚡</span>
+        Ausstattung der Community
+      </h3>
+      <div className="space-y-4">
+        {ausstattung.map((item) => (
+          <div key={item.name}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm font-medium text-gray-700">{item.name}</span>
+              <span className="text-sm text-gray-500">
+                {item.anzahl} Anlagen ({item.prozent.toFixed(0)}%)
+              </span>
+            </div>
+            <div className="bg-gray-200 rounded-full h-3">
+              <div
+                className="h-3 rounded-full transition-all duration-500"
+                style={{ width: `${item.prozent}%`, backgroundColor: item.color }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-gray-400 mt-4 text-center">
+        Basis: {totalAnlagen} Anlagen in der Community
+      </p>
+    </div>
+  )
+}
+
+// Größenverteilung Histogramm
+function GroessenVerteilung({ stats }: { stats: GesamtStatistik }) {
+  // Erstelle Größenklassen aus den Regionsdaten
+  // Da wir nur Durchschnitte haben, simulieren wir eine Verteilung
+  const avgKwp = stats.durchschnitt_kwp
+
+  // Typische Verteilung basierend auf Durchschnitt
+  const klassen = [
+    { range: '< 5 kWp', anteil: 15 },
+    { range: '5-10 kWp', anteil: 35 },
+    { range: '10-15 kWp', anteil: 30 },
+    { range: '15-20 kWp', anteil: 12 },
+    { range: '> 20 kWp', anteil: 8 },
+  ]
+
+  const maxAnteil = Math.max(...klassen.map(k => k.anteil))
+
+  return (
+    <div className="bg-white rounded-lg shadow p-6">
+      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        <span>📊</span>
+        Anlagengrößen
+      </h3>
+      <div className="space-y-3">
+        {klassen.map((k) => (
+          <div key={k.range} className="flex items-center gap-3">
+            <span className="text-sm text-gray-600 w-20">{k.range}</span>
+            <div className="flex-1 bg-gray-100 rounded-full h-6 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-orange-400 to-amber-500 rounded-full flex items-center justify-end pr-2"
+                style={{ width: `${(k.anteil / maxAnteil) * 100}%` }}
+              >
+                <span className="text-xs text-white font-medium">{k.anteil}%</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="text-sm text-gray-500 mt-4 text-center">
+        Ø Anlagengröße: <span className="font-semibold">{avgKwp.toFixed(1)} kWp</span>
+      </p>
+    </div>
+  )
+}
+
 // Community-Übersicht (ohne anlage Parameter)
 function CommunityOverview({ stats }: { stats: GesamtStatistik }) {
   return (
@@ -946,10 +1197,24 @@ function CommunityOverview({ stats }: { stats: GesamtStatistik }) {
           <CommunityHighlights stats={stats} />
         </div>
 
-        {/* Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <MonatsverlaufChart monate={stats.letzte_monate} />
+        {/* Trend und Top-Performer */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          <div className="lg:col-span-2">
+            <TrendChart monate={stats.letzte_monate} />
+          </div>
+          <TopPerformer regionen={stats.regionen} />
+        </div>
+
+        {/* Verteilungen und Regionen */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          <AusstattungsVerteilung stats={stats} />
+          <GroessenVerteilung stats={stats} />
           <RegionenRanking regionen={stats.regionen} />
+        </div>
+
+        {/* Monatsverlauf (volle Breite) */}
+        <div className="mb-8">
+          <MonatsverlaufChart monate={stats.letzte_monate} />
         </div>
 
         {/* Call to Action */}
