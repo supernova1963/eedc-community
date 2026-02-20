@@ -115,8 +115,9 @@ class Monatswert(Base):
    - Für Besucher ohne EEDC
 
 2. **Personalisiertes Benchmark** (`/?anlage=HASH`)
-   - Zeigt Ranking, Vergleiche, Ausstattung
-   - Für EEDC-Nutzer nach dem Teilen
+   - Zeigt Basis-Ranking (PV-Performance)
+   - Vereinfachte Ansicht für Web
+   - **Detaillierte Analysen:** Im EEDC Add-on unter Auswertung → Community
 
 ## Bekannte Fallstricke
 
@@ -133,28 +134,41 @@ Das EEDC Add-on (supernova1963/eedc-homeassistant) sendet Daten hierher:
 
 ```
 EEDC Add-on                          Community Server
-┌─────────────────┐                  ┌─────────────────┐
-│ CommunityShare  │ ── POST ──────→  │ /api/submit     │
-│ .tsx            │ ← Benchmark ───  │                 │
-│                 │                  │                 │
-│ "Benchmark      │ ── GET ───────→  │ /api/benchmark/ │
-│  öffnen" Link   │                  │ anlage/{hash}   │
-└─────────────────┘                  └─────────────────┘
+┌─────────────────────┐              ┌─────────────────┐
+│ CommunityShare.tsx  │ ─ POST ────→ │ /api/submit     │
+│                     │              │                 │
+│ CommunityVergleich  │ ─ Proxy ───→ │ /api/benchmark/ │
+│ .tsx (embedded)     │              │ anlage/{hash}   │
+│                     │              │                 │
+│ "Im Browser öffnen" │ ─ Link ────→ │ /?anlage=HASH   │
+└─────────────────────┘              └─────────────────┘
 ```
+
+**Architektur (seit v2.0.3):**
+- **Web-Seite:** Vereinfachte Ansicht mit PV-Benchmark
+- **EEDC Add-on:** Detaillierte Analyse mit Zeitraum-Auswahl und Komponenten-KPIs
+- **Proxy-Endpoint:** EEDC ruft `/api/community/benchmark/{anlage_id}` auf,
+  dieser proxied zu Community Server `/api/benchmark/anlage/{hash}`
 
 **EEDC-Dateien:**
 - `eedc/backend/services/community_service.py` - Datenaufbereitung
-- `eedc/backend/api/routes/community.py` - API Routes
-- `eedc/frontend/src/pages/CommunityShare.tsx` - UI
+- `eedc/backend/api/routes/community.py` - API Routes + Benchmark-Proxy
+- `eedc/frontend/src/pages/CommunityShare.tsx` - Upload UI
+- `eedc/frontend/src/pages/CommunityVergleich.tsx` - Benchmark-Analyse (NEU v2.0.3)
 - `eedc/frontend/src/api/community.ts` - API Client
 
-## Roadmap
+## Feature-Verteilung
 
-Siehe `PLAN_COMMUNITY_DASHBOARD_v2.md`:
-- Erweiterte KPIs (JAZ, PV-Anteile, Speicher-Zyklen)
-- Zeitraum-Auswahl
-- Historische Trends
-- Alle Komponenten: PV, Speicher, WP, E-Auto, Wallbox, BKW, Sonstiges
+| Feature | Web (energy.raunet.eu) | EEDC Add-on |
+|---------|------------------------|-------------|
+| PV-Benchmark (kWh/kWp) | ✓ | ✓ |
+| Zeitraum-Auswahl | - | ✓ |
+| Komponenten-KPIs | - | ✓ (Speicher, WP, E-Auto) |
+| Monatlicher Ertrag-Vergleich | - | ✓ (Chart) |
+| Detailliertes Ranking | - | ✓ |
+
+**Prinzip:** Die Web-Seite bietet einen schnellen Überblick, während das
+EEDC Add-on umfassende Analysen ermöglicht (da dort alle Daten lokal vorliegen).
 
 ## Portainer/Docker Konfiguration
 
