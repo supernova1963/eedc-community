@@ -128,6 +128,12 @@ async def get_regionen_statistiken(db: AsyncSession) -> list[RegionStatistik]:
             func.avg(
                 case((Anlage.hat_eauto == True, 1), else_=0)
             ).label("anteil_eauto"),
+            func.avg(
+                case((Anlage.hat_wallbox == True, 1), else_=0)
+            ).label("anteil_wallbox"),
+            func.avg(
+                case((Anlage.hat_balkonkraftwerk == True, 1), else_=0)
+            ).label("anteil_bkw"),
         )
         .group_by(Anlage.region)
         .order_by(func.count(Anlage.id).desc())
@@ -156,6 +162,8 @@ async def get_regionen_statistiken(db: AsyncSession) -> list[RegionStatistik]:
             anteil_mit_speicher=round(row.anteil_speicher * 100, 0),
             anteil_mit_waermepumpe=round(row.anteil_wp * 100, 0),
             anteil_mit_eauto=round(row.anteil_eauto * 100, 0),
+            anteil_mit_wallbox=round(row.anteil_wallbox * 100, 0),
+            anteil_mit_balkonkraftwerk=round(row.anteil_bkw * 100, 0),
         ))
 
     return regionen

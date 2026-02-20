@@ -294,6 +294,8 @@ class RegionStatistik(BaseModel):
     anteil_mit_speicher: float
     anteil_mit_waermepumpe: float
     anteil_mit_eauto: float
+    anteil_mit_wallbox: float = 0
+    anteil_mit_balkonkraftwerk: float = 0
 
 
 class MonatsStatistik(BaseModel):

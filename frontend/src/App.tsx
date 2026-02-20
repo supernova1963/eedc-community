@@ -24,6 +24,8 @@ interface RegionStatistik {
   anteil_mit_speicher: number
   anteil_mit_waermepumpe: number
   anteil_mit_eauto: number
+  anteil_mit_wallbox: number
+  anteil_mit_balkonkraftwerk: number
 }
 
 interface MonatsStatistik {
@@ -365,6 +367,8 @@ function AusstattungVergleich({ anlage, stats }: { anlage: AnlageData; stats: Ge
   const avgSpeicher = stats.regionen.reduce((sum, r) => sum + r.anteil_mit_speicher * r.anzahl_anlagen, 0) / totalAnlagen
   const avgWP = stats.regionen.reduce((sum, r) => sum + r.anteil_mit_waermepumpe * r.anzahl_anlagen, 0) / totalAnlagen
   const avgEAuto = stats.regionen.reduce((sum, r) => sum + r.anteil_mit_eauto * r.anzahl_anlagen, 0) / totalAnlagen
+  const avgWallbox = stats.regionen.reduce((sum, r) => sum + r.anteil_mit_wallbox * r.anzahl_anlagen, 0) / totalAnlagen
+  const avgBKW = stats.regionen.reduce((sum, r) => sum + r.anteil_mit_balkonkraftwerk * r.anzahl_anlagen, 0) / totalAnlagen
 
   // Speicher: kWh-Vergleich wenn Anlage Speicher hat, sonst %-Vergleich
   const speicherCommunity = anlage.speicher_kwh && stats.durchschnitt_speicher_kwh
@@ -376,7 +380,8 @@ function AusstattungVergleich({ anlage, stats }: { anlage: AnlageData; stats: Ge
     { name: 'Speicher', du: anlage.speicher_kwh ? `${anlage.speicher_kwh.toFixed(1)} kWh` : '-', community: speicherCommunity, hatDu: !!anlage.speicher_kwh },
     { name: 'Wärmepumpe', du: anlage.hat_waermepumpe ? '✓' : '-', community: `${Math.round(avgWP)}% haben`, hatDu: anlage.hat_waermepumpe },
     { name: 'E-Auto', du: anlage.hat_eauto ? '✓' : '-', community: `${Math.round(avgEAuto)}% haben`, hatDu: anlage.hat_eauto },
-    { name: 'Wallbox', du: anlage.hat_wallbox ? '✓' : '-', community: '-', hatDu: anlage.hat_wallbox },
+    { name: 'Wallbox', du: anlage.hat_wallbox ? '✓' : '-', community: `${Math.round(avgWallbox)}% haben`, hatDu: anlage.hat_wallbox },
+    { name: 'Balkonkraftwerk', du: anlage.hat_balkonkraftwerk ? '✓' : '-', community: `${Math.round(avgBKW)}% haben`, hatDu: anlage.hat_balkonkraftwerk },
   ]
 
   return (
