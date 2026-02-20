@@ -837,11 +837,19 @@ function AusstattungsVerteilung({ stats }: { stats: GesamtStatistik }) {
   const mitEAuto = stats.regionen.reduce(
     (sum, r) => sum + (r.anteil_mit_eauto / 100) * r.anzahl_anlagen, 0
   )
+  const mitWallbox = stats.regionen.reduce(
+    (sum, r) => sum + (r.anteil_mit_wallbox / 100) * r.anzahl_anlagen, 0
+  )
+  const mitBKW = stats.regionen.reduce(
+    (sum, r) => sum + (r.anteil_mit_balkonkraftwerk / 100) * r.anzahl_anlagen, 0
+  )
 
   const ausstattung = [
     { name: 'Speicher', anzahl: Math.round(mitSpeicher), prozent: (mitSpeicher / totalAnlagen) * 100, color: '#3b82f6' },
     { name: 'Wärmepumpe', anzahl: Math.round(mitWP), prozent: (mitWP / totalAnlagen) * 100, color: '#ef4444' },
     { name: 'E-Auto', anzahl: Math.round(mitEAuto), prozent: (mitEAuto / totalAnlagen) * 100, color: '#22c55e' },
+    { name: 'Wallbox', anzahl: Math.round(mitWallbox), prozent: (mitWallbox / totalAnlagen) * 100, color: '#8b5cf6' },
+    { name: 'Balkonkraftwerk', anzahl: Math.round(mitBKW), prozent: (mitBKW / totalAnlagen) * 100, color: '#f59e0b' },
   ]
 
   return (
