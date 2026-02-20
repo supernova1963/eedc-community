@@ -117,6 +117,11 @@ export default function Datenschutz({ onBack }: DatenschutzProps) {
                   <td className="border border-gray-300 px-3 py-2">Statistik (% mit Speicher, etc.)</td>
                   <td className="border border-gray-300 px-3 py-2">Nur Ja/Nein</td>
                 </tr>
+                <tr>
+                  <td className="border border-gray-300 px-3 py-2">Komponenten-Daten</td>
+                  <td className="border border-gray-300 px-3 py-2">Benchmark (Speicher, WP, E-Auto, Wallbox, BKW)</td>
+                  <td className="border border-gray-300 px-3 py-2">Nur aggregierte Werte (kWh/Monat)</td>
+                </tr>
               </tbody>
             </table>
             <p className="text-gray-700">

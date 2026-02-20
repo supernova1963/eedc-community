@@ -113,7 +113,7 @@ interface BenchmarkData {
 }
 
 // Erweiterte Benchmark-Typen
-type ZeitraumTyp = 'letzter_monat' | 'letzte_12_monate' | 'jahr' | 'seit_installation'
+type ZeitraumTyp = 'letzter_monat' | 'letzte_12_monate' | 'letztes_vollstaendiges_jahr' | 'jahr' | 'seit_installation'
 
 interface KPIVergleich {
   wert: number
@@ -242,6 +242,7 @@ const KOMPONENTEN_ICONS: Record<string, string> = {
 const ZEITRAUM_LABELS: Record<ZeitraumTyp, string> = {
   letzter_monat: 'Letzter Monat',
   letzte_12_monate: 'Letzte 12 Monate',
+  letztes_vollstaendiges_jahr: 'Letztes vollständiges Jahr',
   jahr: 'Aktuelles Jahr',
   seit_installation: 'Seit Installation',
 }
@@ -595,7 +596,8 @@ function ComparisonChart({ anlageData, communityData }: {
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
-      <h3 className="text-lg font-semibold mb-4">Dein Ertrag vs. Community-Durchschnitt</h3>
+      <h3 className="text-lg font-semibold mb-1">Dein Ertrag vs. Community-Durchschnitt</h3>
+      <p className="text-xs text-gray-400 mb-4">Letzte 12 Monate (spezifischer Ertrag in kWh/kWp)</p>
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" />
@@ -632,9 +634,14 @@ function AusstattungVergleich({ anlage, stats }: { anlage: AnlageData; stats: Ge
   const avgWP = stats.regionen.reduce((sum, r) => sum + r.anteil_mit_waermepumpe * r.anzahl_anlagen, 0) / totalAnlagen
   const avgEAuto = stats.regionen.reduce((sum, r) => sum + r.anteil_mit_eauto * r.anzahl_anlagen, 0) / totalAnlagen
 
+  // Speicher: kWh-Vergleich wenn Anlage Speicher hat, sonst %-Vergleich
+  const speicherCommunity = anlage.speicher_kwh && stats.durchschnitt_speicher_kwh
+    ? `${stats.durchschnitt_speicher_kwh.toFixed(1)} kWh`
+    : `${Math.round(avgSpeicher)}% haben`
+
   const items = [
     { name: 'PV-Anlage', du: `${anlage.kwp.toFixed(1)} kWp`, community: `${stats.durchschnitt_kwp.toFixed(1)} kWp`, hatDu: true },
-    { name: 'Speicher', du: anlage.speicher_kwh ? `${anlage.speicher_kwh.toFixed(1)} kWh` : '-', community: `${Math.round(avgSpeicher)}% haben`, hatDu: !!anlage.speicher_kwh },
+    { name: 'Speicher', du: anlage.speicher_kwh ? `${anlage.speicher_kwh.toFixed(1)} kWh` : '-', community: speicherCommunity, hatDu: !!anlage.speicher_kwh },
     { name: 'Wärmepumpe', du: anlage.hat_waermepumpe ? '✓' : '-', community: `${Math.round(avgWP)}% haben`, hatDu: anlage.hat_waermepumpe },
     { name: 'E-Auto', du: anlage.hat_eauto ? '✓' : '-', community: `${Math.round(avgEAuto)}% haben`, hatDu: anlage.hat_eauto },
     { name: 'Wallbox', du: anlage.hat_wallbox ? '✓' : '-', community: '-', hatDu: anlage.hat_wallbox },

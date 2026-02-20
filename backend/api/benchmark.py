@@ -20,7 +20,7 @@ from schemas import (
 router = APIRouter(prefix="/benchmark", tags=["Benchmark"])
 
 # Zeitraum-Typen
-ZeitraumTyp = Literal["letzter_monat", "letzte_12_monate", "jahr", "seit_installation"]
+ZeitraumTyp = Literal["letzter_monat", "letzte_12_monate", "letztes_vollstaendiges_jahr", "jahr", "seit_installation"]
 
 
 def get_zeitraum_filter(
@@ -48,6 +48,11 @@ def get_zeitraum_filter(
         bis_jahr = now.year
         bis_monat = now.month - 1 if now.month > 1 else 12
         return (von_jahr, von_monat, bis_jahr, bis_monat)
+
+    elif zeitraum == "letztes_vollstaendiges_jahr":
+        # Vorjahr komplett (Januar bis Dezember)
+        vorjahr = now.year - 1
+        return (vorjahr, 1, vorjahr, 12)
 
     elif zeitraum == "jahr" and jahr:
         return (jahr, 1, jahr, 12)
