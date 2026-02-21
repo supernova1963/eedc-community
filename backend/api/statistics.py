@@ -248,6 +248,309 @@ async def get_region_detail(
 
 
 # =============================================================================
+# Verteilungen (Histogramme)
+# =============================================================================
+
+METRIC_CONFIG = {
+    "kwp": {"label": "Anlagengröße", "einheit": "kWp", "bins": [0, 5, 8, 10, 12, 15, 20, 30, 50, 100]},
+    "spez_ertrag": {"label": "Spez. Jahresertrag", "einheit": "kWh/kWp", "bins": [0, 700, 800, 850, 900, 950, 1000, 1050, 1100, 1200]},
+    "speicher_kwh": {"label": "Speicherkapazität", "einheit": "kWh", "bins": [0, 5, 8, 10, 12, 15, 20, 30, 50]},
+    "autarkie": {"label": "Autarkiegrad", "einheit": "%", "bins": [0, 30, 40, 50, 60, 70, 80, 90, 100]},
+    "neigung": {"label": "Neigungswinkel", "einheit": "°", "bins": [0, 10, 20, 25, 30, 35, 40, 45, 60, 90]},
+}
+
+
+@router.get("/distributions/{metric}", response_model=Verteilung)
+async def get_distribution(
+    metric: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Liefert Verteilungsdaten für Histogramme.
+
+    Verfügbare Metriken: kwp, spez_ertrag, speicher_kwh, autarkie, neigung
+
+    Verwendet für:
+    - PV-Ertrag Tab: Histogramm
+    - Statistiken Tab: Verteilungskurven
+    """
+    if metric not in METRIC_CONFIG:
+        # Fallback für unbekannte Metrik
+        return Verteilung(
+            metric=metric,
+            einheit="",
+            bins=[],
+            statistik=VerteilungsStatistik(min=0, max=0, median=0, durchschnitt=0, stdabweichung=0),
+        )
+
+    config = METRIC_CONFIG[metric]
+    werte = await _hole_metrik_werte(db, metric)
+
+    if not werte:
+        return Verteilung(
+            metric=metric,
+            einheit=config["einheit"],
+            bins=[],
+            statistik=VerteilungsStatistik(min=0, max=0, median=0, durchschnitt=0, stdabweichung=0),
+        )
+
+    # Bins erstellen
+    bin_grenzen = config["bins"]
+    bins = []
+    for i in range(len(bin_grenzen) - 1):
+        von = bin_grenzen[i]
+        bis = bin_grenzen[i + 1]
+        anzahl = len([w for w in werte if von <= w < bis])
+        bins.append(VerteilungsBin(von=von, bis=bis, anzahl=anzahl))
+
+    # Statistiken
+    werte_sorted = sorted(werte)
+    stat = VerteilungsStatistik(
+        min=round(min(werte), 1),
+        max=round(max(werte), 1),
+        median=round(median(werte), 1),
+        durchschnitt=round(sum(werte) / len(werte), 1),
+        stdabweichung=round(stdev(werte), 1) if len(werte) > 1 else 0,
+    )
+
+    return Verteilung(
+        metric=metric,
+        einheit=config["einheit"],
+        bins=bins,
+        statistik=stat,
+    )
+
+
+async def _hole_metrik_werte(db: AsyncSession, metric: str) -> list[float]:
+    """Holt die Werte für eine bestimmte Metrik."""
+    if metric == "kwp":
+        result = await db.execute(select(Anlage.kwp).where(Anlage.kwp > 0))
+        return [r[0] for r in result.all() if r[0] is not None]
+
+    elif metric == "speicher_kwh":
+        result = await db.execute(select(Anlage.speicher_kwh).where(Anlage.speicher_kwh > 0))
+        return [r[0] for r in result.all() if r[0] is not None]
+
+    elif metric == "neigung":
+        result = await db.execute(select(Anlage.neigung_grad))
+        return [float(r[0]) for r in result.all() if r[0] is not None]
+
+    elif metric == "autarkie":
+        result = await db.execute(
+            select(Monatswert.autarkie_prozent)
+            .where(Monatswert.autarkie_prozent.isnot(None))
+        )
+        return [r[0] for r in result.all() if r[0] is not None]
+
+    elif metric == "spez_ertrag":
+        # Spez. Jahresertrag pro Anlage
+        anlagen_result = await db.execute(select(Anlage))
+        anlagen = anlagen_result.scalars().all()
+
+        werte = []
+        for anlage in anlagen:
+            if not anlage.kwp or anlage.kwp <= 0:
+                continue
+
+            monate_result = await db.execute(
+                select(Monatswert.ertrag_kwh)
+                .where(Monatswert.anlage_id == anlage.id)
+                .order_by(Monatswert.jahr.desc(), Monatswert.monat.desc())
+                .limit(12)
+            )
+            ertraege = [r[0] for r in monate_result.all() if r[0] is not None]
+
+            if len(ertraege) >= 6:
+                jahres_ertrag = (sum(ertraege) / len(ertraege)) * 12
+                spez = jahres_ertrag / anlage.kwp
+                werte.append(spez)
+
+        return werte
+
+    return []
+
+
+# =============================================================================
+# Rankings (Top-Listen)
+# =============================================================================
+
+RANKING_CONFIG = {
+    "spez_ertrag": {"label": "Spezifischer Ertrag", "einheit": "kWh/kWp"},
+    "autarkie": {"label": "Autarkiegrad", "einheit": "%"},
+    "speicher_effizienz": {"label": "Speicher-Wirkungsgrad", "einheit": "%"},
+    "jaz": {"label": "Wärmepumpe JAZ", "einheit": ""},
+    "eauto_pv_anteil": {"label": "E-Auto PV-Anteil", "einheit": "%"},
+}
+
+
+@router.get("/rankings/{category}", response_model=Ranking)
+async def get_ranking(
+    category: str,
+    limit: int = Query(10, ge=1, le=50, description="Anzahl Einträge"),
+    anlage_hash: str | None = Query(None, description="Eigene Anlage für Rang-Anzeige"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Liefert anonyme Top-N Ranglisten.
+
+    Verfügbare Kategorien: spez_ertrag, autarkie, speicher_effizienz, jaz, eauto_pv_anteil
+
+    Verwendet für:
+    - Statistiken Tab: Top-10-Listen
+    """
+    if category not in RANKING_CONFIG:
+        return Ranking(
+            category=category,
+            label=category,
+            einheit="",
+            zeitraum="12_monate",
+            ranking=[],
+        )
+
+    config = RANKING_CONFIG[category]
+    ranking_daten = await _berechne_ranking(db, category)
+
+    # Sortieren (absteigend) und limitieren
+    ranking_daten.sort(key=lambda x: x["wert"], reverse=True)
+
+    # Eigenen Rang finden
+    eigener_rang = None
+    eigener_wert = None
+    if anlage_hash:
+        for i, entry in enumerate(ranking_daten):
+            if entry.get("hash") == anlage_hash:
+                eigener_rang = i + 1
+                eigener_wert = entry["wert"]
+                break
+
+    # Top N
+    top_entries = []
+    for i, entry in enumerate(ranking_daten[:limit]):
+        top_entries.append(RankingEintrag(
+            rang=i + 1,
+            wert=round(entry["wert"], 1),
+            region=entry["region"],
+            kwp=round(entry["kwp"], 1),
+        ))
+
+    return Ranking(
+        category=category,
+        label=config["label"],
+        einheit=config["einheit"],
+        zeitraum="12_monate",
+        ranking=top_entries,
+        eigener_rang=eigener_rang,
+        eigener_wert=round(eigener_wert, 1) if eigener_wert else None,
+    )
+
+
+async def _berechne_ranking(db: AsyncSession, category: str) -> list[dict]:
+    """Berechnet Ranking-Daten für eine Kategorie."""
+    anlagen_result = await db.execute(select(Anlage))
+    anlagen = anlagen_result.scalars().all()
+
+    ranking = []
+
+    for anlage in anlagen:
+        wert = await _berechne_ranking_wert(db, anlage, category)
+        if wert is not None:
+            ranking.append({
+                "hash": anlage.anlage_hash,
+                "wert": wert,
+                "region": anlage.region,
+                "kwp": anlage.kwp,
+            })
+
+    return ranking
+
+
+async def _berechne_ranking_wert(db: AsyncSession, anlage, category: str) -> float | None:
+    """Berechnet den Ranking-Wert für eine Anlage und Kategorie."""
+    if category == "spez_ertrag":
+        if not anlage.kwp or anlage.kwp <= 0:
+            return None
+
+        monate_result = await db.execute(
+            select(Monatswert.ertrag_kwh)
+            .where(Monatswert.anlage_id == anlage.id)
+            .order_by(Monatswert.jahr.desc(), Monatswert.monat.desc())
+            .limit(12)
+        )
+        ertraege = [r[0] for r in monate_result.all() if r[0] is not None]
+
+        if len(ertraege) >= 6:
+            jahres_ertrag = (sum(ertraege) / len(ertraege)) * 12
+            return jahres_ertrag / anlage.kwp
+        return None
+
+    elif category == "autarkie":
+        result = await db.execute(
+            select(func.avg(Monatswert.autarkie_prozent))
+            .where(Monatswert.anlage_id == anlage.id)
+            .where(Monatswert.autarkie_prozent.isnot(None))
+        )
+        return result.scalar()
+
+    elif category == "speicher_effizienz":
+        if not anlage.speicher_kwh or anlage.speicher_kwh <= 0:
+            return None
+
+        result = await db.execute(
+            select(
+                func.sum(Monatswert.speicher_ladung_kwh),
+                func.sum(Monatswert.speicher_entladung_kwh),
+            )
+            .where(Monatswert.anlage_id == anlage.id)
+            .where(Monatswert.speicher_ladung_kwh.isnot(None))
+            .where(Monatswert.speicher_entladung_kwh.isnot(None))
+        )
+        row = result.one()
+        if row[0] and row[1] and row[0] > 0:
+            return (row[1] / row[0]) * 100
+        return None
+
+    elif category == "jaz":
+        if not anlage.hat_waermepumpe:
+            return None
+
+        result = await db.execute(
+            select(
+                func.sum(Monatswert.wp_stromverbrauch_kwh),
+                func.sum(Monatswert.wp_heizwaerme_kwh),
+                func.sum(Monatswert.wp_warmwasser_kwh),
+            )
+            .where(Monatswert.anlage_id == anlage.id)
+            .where(Monatswert.wp_stromverbrauch_kwh.isnot(None))
+        )
+        row = result.one()
+        strom = row[0] or 0
+        waerme = (row[1] or 0) + (row[2] or 0)
+        if strom > 0:
+            return waerme / strom
+        return None
+
+    elif category == "eauto_pv_anteil":
+        if not anlage.hat_eauto:
+            return None
+
+        result = await db.execute(
+            select(
+                func.sum(Monatswert.eauto_ladung_gesamt_kwh),
+                func.sum(Monatswert.eauto_ladung_pv_kwh),
+            )
+            .where(Monatswert.anlage_id == anlage.id)
+            .where(Monatswert.eauto_ladung_gesamt_kwh.isnot(None))
+        )
+        row = result.one()
+        if row[0] and row[0] > 0:
+            pv = row[1] or 0
+            return (pv / row[0]) * 100
+        return None
+
+    return None
+
+
+# =============================================================================
 # Hilfsfunktionen
 # =============================================================================
 
