@@ -408,5 +408,34 @@ class Ranking(BaseModel):
     eigener_wert: float | None = None
 
 
+# =============================================================================
+# Trend-Schemas (Phase 4)
+# =============================================================================
+
+class TrendPunkt(BaseModel):
+    """Ein Datenpunkt in einer Trend-Zeitreihe."""
+    monat: str  # Format: "YYYY-MM"
+    wert: float
+
+
+class TrendDaten(BaseModel):
+    """Zeitliche Entwicklung der Community-Daten."""
+    period: str  # "12_monate", "24_monate", "gesamt"
+    trends: dict[str, list[TrendPunkt]]
+
+
+class AlterErtrag(BaseModel):
+    """Spezifischer Ertrag nach Anlagenalter."""
+    alter_jahre: int
+    anzahl: int
+    durchschnitt_spez_ertrag: float
+
+
+class DegradationsAnalyse(BaseModel):
+    """Ertrags-Analyse nach Anlagenalter."""
+    nach_alter: list[AlterErtrag]
+    durchschnittliche_degradation_prozent_jahr: float
+
+
 # Forward reference auflösen
 SubmitResponse.model_rebuild()

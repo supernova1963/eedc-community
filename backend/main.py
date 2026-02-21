@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse
 
 from core import settings, init_db
-from api import submit_router, stats_router, benchmark_router, statistics_router, components_router
+from api import submit_router, stats_router, benchmark_router, statistics_router, components_router, trends_router
 
 
 @asynccontextmanager
@@ -49,6 +49,7 @@ app.include_router(stats_router, prefix="/api")
 app.include_router(benchmark_router, prefix="/api")
 app.include_router(statistics_router, prefix="/api")
 app.include_router(components_router, prefix="/api")
+app.include_router(trends_router, prefix="/api")
 
 
 # Health-Check
