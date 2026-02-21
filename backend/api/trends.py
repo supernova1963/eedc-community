@@ -23,6 +23,77 @@ from schemas import (
 router = APIRouter(prefix="/trends", tags=["Trends"])
 
 
+# WICHTIG: /degradation MUSS vor /{period} stehen, sonst wird es als period="degradation" gematcht!
+@router.get("/degradation", response_model=DegradationsAnalyse)
+async def get_degradation(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Ertrags-Analyse nach Anlagenalter.
+
+    Zeigt den durchschnittlichen spezifischen Ertrag gruppiert nach
+    Anlagenalter (Jahre seit Installation). Ermöglicht Rückschlüsse
+    auf die typische Degradation von PV-Anlagen.
+    """
+    now = datetime.now()
+    aktuelles_jahr = now.year
+
+    # Spezifischen Ertrag nach Anlagenalter berechnen
+    # Nur Anlagen mit vollständigen Jahreswerten (mind. 3 Anlagen)
+
+    alter_stats = []
+
+    for alter in range(1, 16):  # 1 bis 15 Jahre
+        installations_jahr = aktuelles_jahr - alter
+
+        # Durchschnittlicher spez. Ertrag für Anlagen dieses Alters
+        # Basierend auf den letzten 12 Monaten
+        # JOIN über anlage_id (Fremdschlüssel)
+        stmt = select(
+            func.count(func.distinct(Anlage.anlage_hash)).label("anzahl"),
+            func.sum(Monatswert.ertrag_kwh).label("gesamt_erzeugung"),
+            func.sum(Anlage.kwp).label("gesamt_kwp"),
+        ).select_from(Monatswert).join(
+            Anlage, Monatswert.anlage_id == Anlage.id
+        ).where(
+            Anlage.installation_jahr == installations_jahr,
+            Anlage.kwp > 0,
+            Monatswert.ertrag_kwh > 0,
+            # Letzte 12 Monate
+            ((Monatswert.jahr == aktuelles_jahr) |
+             ((Monatswert.jahr == aktuelles_jahr - 1) & (Monatswert.monat > now.month)))
+        )
+
+        result = await db.execute(stmt)
+        row = result.first()
+
+        if row and row.anzahl and row.anzahl >= 3 and row.gesamt_kwp and row.gesamt_kwp > 0:
+            # Spezifischer Ertrag = Gesamterzeugung / Gesamt-kWp
+            spez_ertrag = row.gesamt_erzeugung / row.gesamt_kwp
+            alter_stats.append(AlterErtrag(
+                alter_jahre=alter,
+                anzahl=row.anzahl,
+                durchschnitt_spez_ertrag=round(spez_ertrag, 0)
+            ))
+
+    # Degradation berechnen (lineare Regression)
+    degradation_prozent = 0.0
+    if len(alter_stats) >= 3:
+        # Einfache lineare Approximation
+        erster_ertrag = alter_stats[0].durchschnitt_spez_ertrag if alter_stats else 0
+        letzter_ertrag = alter_stats[-1].durchschnitt_spez_ertrag if alter_stats else 0
+        jahre_diff = alter_stats[-1].alter_jahre - alter_stats[0].alter_jahre if len(alter_stats) > 1 else 1
+
+        if erster_ertrag > 0 and jahre_diff > 0:
+            gesamt_verlust = (erster_ertrag - letzter_ertrag) / erster_ertrag * 100
+            degradation_prozent = gesamt_verlust / jahre_diff
+
+    return DegradationsAnalyse(
+        nach_alter=alter_stats,
+        durchschnittliche_degradation_prozent_jahr=round(degradation_prozent, 2)
+    )
+
+
 @router.get("/{period}", response_model=TrendDaten)
 async def get_trends(
     period: Literal["12_monate", "24_monate", "gesamt"],
@@ -73,15 +144,15 @@ async def get_trends(
         jahr, monat = map(int, monat_str.split("-"))
 
         # Anlagen die zu diesem Zeitpunkt existierten (basierend auf erstem Monatswert)
-        # Vereinfachung: Zähle alle Anlagen die Monatswerte bis zu diesem Datum haben
+        # JOIN über anlage_id (Fremdschlüssel)
         stmt = select(
-            func.count(func.distinct(Monatswert.anlage_hash)).label("anzahl"),
+            func.count(func.distinct(Anlage.anlage_hash)).label("anzahl"),
             func.avg(Anlage.kwp).label("avg_kwp"),
             func.sum(case((Anlage.speicher_kwh > 0, 1), else_=0)).label("mit_speicher"),
             func.sum(case((Anlage.hat_waermepumpe == True, 1), else_=0)).label("mit_wp"),
             func.sum(case((Anlage.hat_eauto == True, 1), else_=0)).label("mit_eauto"),
         ).select_from(Monatswert).join(
-            Anlage, Monatswert.anlage_hash == Anlage.community_hash
+            Anlage, Monatswert.anlage_id == Anlage.id
         ).where(
             (Monatswert.jahr < jahr) |
             ((Monatswert.jahr == jahr) & (Monatswert.monat <= monat))
@@ -119,73 +190,4 @@ async def get_trends(
             "waermepumpe_quote": waermepumpe_quote_trend,
             "eauto_quote": eauto_quote_trend,
         }
-    )
-
-
-@router.get("/degradation", response_model=DegradationsAnalyse)
-async def get_degradation(
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Ertrags-Analyse nach Anlagenalter.
-
-    Zeigt den durchschnittlichen spezifischen Ertrag gruppiert nach
-    Anlagenalter (Jahre seit Installation). Ermöglicht Rückschlüsse
-    auf die typische Degradation von PV-Anlagen.
-    """
-    now = datetime.now()
-    aktuelles_jahr = now.year
-
-    # Spezifischen Ertrag nach Anlagenalter berechnen
-    # Nur Anlagen mit vollständigen Jahreswerten (mind. 10 Monate)
-
-    alter_stats = []
-
-    for alter in range(1, 16):  # 1 bis 15 Jahre
-        installations_jahr = aktuelles_jahr - alter
-
-        # Durchschnittlicher spez. Ertrag für Anlagen dieses Alters
-        # Basierend auf den letzten 12 Monaten
-        stmt = select(
-            func.count(func.distinct(Anlage.community_hash)).label("anzahl"),
-            func.sum(Monatswert.pv_erzeugung_kwh).label("gesamt_erzeugung"),
-            func.sum(Anlage.kwp).label("gesamt_kwp"),
-        ).select_from(Monatswert).join(
-            Anlage, Monatswert.anlage_hash == Anlage.community_hash
-        ).where(
-            Anlage.installation_jahr == installations_jahr,
-            Anlage.kwp > 0,
-            Monatswert.pv_erzeugung_kwh > 0,
-            # Letzte 12 Monate
-            ((Monatswert.jahr == aktuelles_jahr) |
-             ((Monatswert.jahr == aktuelles_jahr - 1) & (Monatswert.monat > now.month)))
-        )
-
-        result = await db.execute(stmt)
-        row = result.first()
-
-        if row and row.anzahl and row.anzahl >= 3 and row.gesamt_kwp and row.gesamt_kwp > 0:
-            # Spezifischer Ertrag = Gesamterzeugung / Gesamt-kWp
-            spez_ertrag = row.gesamt_erzeugung / row.gesamt_kwp
-            alter_stats.append(AlterErtrag(
-                alter_jahre=alter,
-                anzahl=row.anzahl,
-                durchschnitt_spez_ertrag=round(spez_ertrag, 0)
-            ))
-
-    # Degradation berechnen (lineare Regression)
-    degradation_prozent = 0.0
-    if len(alter_stats) >= 3:
-        # Einfache lineare Approximation
-        erster_ertrag = alter_stats[0].durchschnitt_spez_ertrag if alter_stats else 0
-        letzter_ertrag = alter_stats[-1].durchschnitt_spez_ertrag if alter_stats else 0
-        jahre_diff = alter_stats[-1].alter_jahre - alter_stats[0].alter_jahre if len(alter_stats) > 1 else 1
-
-        if erster_ertrag > 0 and jahre_diff > 0:
-            gesamt_verlust = (erster_ertrag - letzter_ertrag) / erster_ertrag * 100
-            degradation_prozent = gesamt_verlust / jahre_diff
-
-    return DegradationsAnalyse(
-        nach_alter=alter_stats,
-        durchschnittliche_degradation_prozent_jahr=round(degradation_prozent, 2)
     )
