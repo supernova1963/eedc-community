@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func, extract, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_db
+from core import get_db
 from models import Anlage, Monatswert
 from schemas import (
     TrendPunkt,
