@@ -321,5 +321,92 @@ class GesamtStatistik(BaseModel):
     letzte_monate: list[MonatsStatistik]
 
 
+# =============================================================================
+# Erweiterte Statistik-Schemas (für eedc-homeassistant Community Feature)
+# =============================================================================
+
+class AusstattungsQuoten(BaseModel):
+    """Prozentuale Ausstattungsquoten der Community."""
+    speicher: float  # % mit Speicher
+    waermepumpe: float  # % mit Wärmepumpe
+    eauto: float  # % mit E-Auto
+    wallbox: float  # % mit Wallbox
+    balkonkraftwerk: float  # % mit BKW
+
+
+class TypischeAnlage(BaseModel):
+    """Die "typische" Community-Anlage (Median/Durchschnitt)."""
+    kwp: float
+    ausrichtung: str
+    neigung_grad: int
+    speicher_kwh: float | None
+
+
+class GlobaleStatistik(BaseModel):
+    """Erweiterte globale Community-Statistiken."""
+    anzahl_anlagen: int
+    anzahl_regionen: int
+    durchschnitt: dict  # kwp, spez_ertrag, speicher_kwh, autarkie_prozent, eigenverbrauch_prozent
+    ausstattungsquoten: AusstattungsQuoten
+    typische_anlage: TypischeAnlage
+    stand: str  # ISO Timestamp
+
+
+class MonatsDurchschnitt(BaseModel):
+    """Monatlicher Community-Durchschnitt."""
+    jahr: int
+    monat: int
+    spez_ertrag_avg: float
+    anzahl_anlagen: int
+
+
+class MonatlicheDurchschnitte(BaseModel):
+    """Monatliche Durchschnitte für Zeitraum."""
+    monate: list[MonatsDurchschnitt]
+
+
+class VerteilungsBin(BaseModel):
+    """Ein Bin in der Verteilung."""
+    von: float
+    bis: float
+    anzahl: int
+
+
+class VerteilungsStatistik(BaseModel):
+    """Statistische Kennzahlen einer Verteilung."""
+    min: float
+    max: float
+    median: float
+    durchschnitt: float
+    stdabweichung: float
+
+
+class Verteilung(BaseModel):
+    """Verteilungsdaten für Histogramme."""
+    metric: str
+    einheit: str
+    bins: list[VerteilungsBin]
+    statistik: VerteilungsStatistik
+
+
+class RankingEintrag(BaseModel):
+    """Ein Eintrag in der Rangliste (anonym)."""
+    rang: int
+    wert: float
+    region: str
+    kwp: float
+
+
+class Ranking(BaseModel):
+    """Top-N Rangliste."""
+    category: str
+    label: str
+    einheit: str
+    zeitraum: str
+    ranking: list[RankingEintrag]
+    eigener_rang: int | None = None
+    eigener_wert: float | None = None
+
+
 # Forward reference auflösen
 SubmitResponse.model_rebuild()
