@@ -296,6 +296,12 @@ class RegionStatistik(BaseModel):
     anteil_mit_eauto: float
     anteil_mit_wallbox: float = 0
     anteil_mit_balkonkraftwerk: float = 0
+    # Performance-Durchschnitte (nur Anlagen mit dem jeweiligen Gerät)
+    avg_speicher_zyklen_kwh: float | None = None   # Ø (Ladung+Entladung)/2 pro Monat
+    avg_wp_jaz: float | None = None                # Ø berechnete JAZ (Wärme/Strom)
+    avg_eauto_km: float | None = None              # Ø km pro Monat
+    avg_wallbox_kwh: float | None = None           # Ø kWh geladen pro Monat
+    avg_bkw_kwh: float | None = None               # Ø BKW-Ertrag pro Monat
 
 
 class MonatsStatistik(BaseModel):
