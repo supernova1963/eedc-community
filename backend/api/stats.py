@@ -153,16 +153,21 @@ async def get_regionen_statistiken(db: AsyncSession) -> list[RegionStatistik]:
         )
         avg_autarkie = autarkie_result.scalar()
 
-        # Performance: Speicher-Zyklen (Ø (Ladung+Entladung)/2 pro Monat)
+        # Performance: Speicher Ladung + Entladung (getrennt, Ø pro Monat)
         speicher_result = await db.execute(
-            select(func.avg((Monatswert.speicher_ladung_kwh + Monatswert.speicher_entladung_kwh) / 2))
+            select(
+                func.avg(Monatswert.speicher_ladung_kwh),
+                func.avg(Monatswert.speicher_entladung_kwh),
+            )
             .join(Anlage)
             .where(Anlage.region == row.region)
             .where(Monatswert.speicher_ladung_kwh.isnot(None))
             .where(Monatswert.speicher_entladung_kwh.isnot(None))
             .where(Monatswert.speicher_ladung_kwh + Monatswert.speicher_entladung_kwh > 0)
         )
-        avg_speicher_zyklen = speicher_result.scalar()
+        sp = speicher_result.one()
+        avg_speicher_ladung = round(sp[0], 1) if sp[0] else None
+        avg_speicher_entladung = round(sp[1], 1) if sp[1] else None
 
         # Performance: WP JAZ (Σ Wärme / Σ Strom)
         wp_result = await db.execute(
@@ -178,25 +183,43 @@ async def get_regionen_statistiken(db: AsyncSession) -> list[RegionStatistik]:
         wp_row = wp_result.one()
         avg_wp_jaz = round(wp_row[0] / wp_row[1], 2) if wp_row[0] and wp_row[1] else None
 
-        # Performance: E-Auto km (Ø pro Monat)
+        # Performance: E-Auto km + kWh zuhause geladen (gesamt − extern)
         eauto_result = await db.execute(
-            select(func.avg(Monatswert.eauto_km))
+            select(
+                func.avg(Monatswert.eauto_km),
+                func.avg(
+                    Monatswert.eauto_ladung_gesamt_kwh
+                    - func.coalesce(Monatswert.eauto_ladung_extern_kwh, 0)
+                ),
+            )
             .join(Anlage)
             .where(Anlage.region == row.region)
             .where(Monatswert.eauto_km.isnot(None))
             .where(Monatswert.eauto_km > 0)
         )
-        avg_eauto_km = eauto_result.scalar()
+        ea = eauto_result.one()
+        avg_eauto_km = round(ea[0], 0) if ea[0] else None
+        avg_eauto_ladung = round(ea[1], 1) if ea[1] and ea[1] > 0 else None
 
-        # Performance: Wallbox kWh (Ø pro Monat)
+        # Performance: Wallbox kWh + PV-Anteil (Σ PV / Σ Gesamt)
         wallbox_result = await db.execute(
-            select(func.avg(Monatswert.wallbox_ladung_kwh))
+            select(
+                func.avg(Monatswert.wallbox_ladung_kwh),
+                func.sum(Monatswert.wallbox_ladung_pv_kwh),
+                func.sum(Monatswert.wallbox_ladung_kwh),
+            )
             .join(Anlage)
             .where(Anlage.region == row.region)
             .where(Monatswert.wallbox_ladung_kwh.isnot(None))
             .where(Monatswert.wallbox_ladung_kwh > 0)
         )
-        avg_wallbox_kwh = wallbox_result.scalar()
+        wb = wallbox_result.one()
+        avg_wallbox_kwh = round(wb[0], 1) if wb[0] else None
+        avg_wallbox_pv_anteil = (
+            round(wb[1] / wb[2] * 100, 1)
+            if wb[1] and wb[2] and wb[2] > 0
+            else None
+        )
 
         # Performance: BKW Ertrag (Ø pro Monat)
         bkw_result = await db.execute(
@@ -219,10 +242,13 @@ async def get_regionen_statistiken(db: AsyncSession) -> list[RegionStatistik]:
             anteil_mit_eauto=round(row.anteil_eauto * 100, 0),
             anteil_mit_wallbox=round(row.anteil_wallbox * 100, 0),
             anteil_mit_balkonkraftwerk=round(row.anteil_bkw * 100, 0),
-            avg_speicher_zyklen_kwh=round(avg_speicher_zyklen, 1) if avg_speicher_zyklen else None,
+            avg_speicher_ladung_kwh=avg_speicher_ladung,
+            avg_speicher_entladung_kwh=avg_speicher_entladung,
             avg_wp_jaz=avg_wp_jaz,
-            avg_eauto_km=round(avg_eauto_km, 0) if avg_eauto_km else None,
-            avg_wallbox_kwh=round(avg_wallbox_kwh, 1) if avg_wallbox_kwh else None,
+            avg_eauto_km=avg_eauto_km,
+            avg_eauto_ladung_kwh=avg_eauto_ladung,
+            avg_wallbox_kwh=avg_wallbox_kwh,
+            avg_wallbox_pv_anteil=avg_wallbox_pv_anteil,
             avg_bkw_kwh=round(avg_bkw_kwh, 1) if avg_bkw_kwh else None,
         ))
 
