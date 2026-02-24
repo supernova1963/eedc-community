@@ -11,6 +11,7 @@ Anonymer Datensammel-Server für PV-Anlagen Vergleichsstatistiken.
 - **Regionale Statistiken** und Ranking nach Bundesland
 - **Personalisiertes Benchmark** (mit `?anlage=HASH` Parameter)
 - **Komponenten-Benchmarks** für Speicher, Wärmepumpe, E-Auto, Wallbox, Balkonkraftwerk
+- **Performance-Metriken im Regional-Tab** (ab v2.2.0): Ø Speicher-Ladung/Entladung, Ø JAZ, Ø E-Auto km, Ø Wallbox-Ladung, Ø BKW-Ertrag pro Bundesland
 - **Dark Mode** mit System-Präferenz-Erkennung
 - **Rate-Limiting** und Plausibilitätsprüfung
 - **Dashboard** mit Recharts-Visualisierungen
@@ -42,7 +43,7 @@ eedc-community/
 │   ├── package.json
 │   └── tailwind.config.js
 ├── docker-compose.yml
-└── PLAN_COMMUNITY_DASHBOARD_v2.md  # Roadmap für erweiterte Features
+└── docs/archive/                   # Archivierte Planungsdokumente
 ```
 
 ## API Endpoints
@@ -55,12 +56,24 @@ eedc-community/
 | `/api/stats` | GET | Aggregierte Statistiken |
 | `/api/benchmark/anlage/{hash}` | GET | Personalisierter Benchmark |
 | `/api/benchmark/vergleich` | GET | Vergleichsdaten ohne Speicherung |
+| `/api/statistics/global` | GET | Globale Community-Kennzahlen |
+| `/api/statistics/monthly-averages` | GET | Monatliche Ø-Erträge (Community-Trend) |
+| `/api/statistics/regional` | GET | Performance-Metriken pro Bundesland/Land |
+| `/api/statistics/distributions/{metric}` | GET | Verteilungshistogramm einer Metrik |
+| `/api/statistics/rankings/{category}` | GET | Rankings nach Kategorie |
+| `/api/components/speicher` | GET | Speicher-Benchmark (Effizienz, Zyklen) |
+| `/api/components/waermepumpe` | GET | Wärmepumpen-Benchmark (JAZ) |
+| `/api/components/eauto` | GET | E-Auto-Benchmark (PV-Anteil, km) |
+| `/api/components/wallbox` | GET | Wallbox-Benchmark (Ladung, PV-Anteil) |
+| `/api/components/bkw` | GET | BKW-Benchmark (spez. Ertrag) |
+| `/api/trends/monatlich` | GET | Community-Ertragsverlauf über Zeit |
+| `/api/trends/degradation` | GET | Degradations-Analyse (Ertrag nach Alter) |
 
 ## Entwicklung
 
 ### Voraussetzungen
 - Python 3.11+
-- Node.js 18+
+- Node.js 20+
 - PostgreSQL (oder Docker)
 
 ### Backend starten (lokal)
@@ -205,7 +218,7 @@ monatliche Charts) sind im EEDC Add-on unter *Auswertungen → Community* verfü
 
 ## Integration mit EEDC Add-on
 
-Das EEDC Add-on (ab v2.0.3) bietet erweiterte Community-Funktionen:
+Das EEDC Add-on (ab v2.3.0) bietet erweiterte Community-Funktionen:
 
 | Feature | Web (energy.raunet.eu) | EEDC Add-on |
 |---------|------------------------|-------------|

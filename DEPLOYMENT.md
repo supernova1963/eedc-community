@@ -61,7 +61,7 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://eedc:${POSTGRES_PASSWORD}@db:5432/eedc_community
       - SECRET_KEY=${SECRET_KEY}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://energie.raunet.eu}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://energy.raunet.eu}
     depends_on:
       db:
         condition: service_healthy
@@ -103,7 +103,7 @@ networks:
    |------|-------|
    | `POSTGRES_PASSWORD` | `dein_sicheres_passwort_hier` |
    | `SECRET_KEY` | `dein_zufaelliger_string_hier` |
-   | `ALLOWED_ORIGINS` | `https://energie.raunet.eu` |
+   | `ALLOWED_ORIGINS` | `https://energy.raunet.eu` |
 
    **Passwörter generieren** (auf der VM):
    ```bash
@@ -123,7 +123,7 @@ networks:
 2. **Hosts → Proxy Hosts → Add Proxy Host**
 
 3. **Details Tab:**
-   - Domain Names: `energie.raunet.eu`
+   - Domain Names: `energy.raunet.eu`
    - Scheme: `http`
    - Forward Hostname / IP: `eedc-community-api`
    - Forward Port: `8080`
@@ -142,20 +142,20 @@ networks:
 Bei deinem Domain-Provider einen A-Record erstellen:
 
 ```
-energie.raunet.eu  →  <öffentliche IP deines Servers>
+energy.raunet.eu  →  <öffentliche IP deines Servers>
 ```
 
 ## Schritt 7: Testen
 
 ```bash
 # Health-Check
-curl https://energie.raunet.eu/api/health
+curl https://energy.raunet.eu/api/health
 
 # Sollte zurückgeben:
-# {"status":"ok","version":"0.1.0"}
+# {"status":"ok","version":"current"}
 ```
 
-Oder im Browser: https://energie.raunet.eu
+Oder im Browser: https://energy.raunet.eu
 
 ---
 
