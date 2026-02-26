@@ -446,5 +446,66 @@ class DegradationsAnalyse(BaseModel):
     durchschnittliche_degradation_prozent_jahr: float
 
 
+# =============================================================================
+# Gesamtwerte-Schemas (Community Impact)
+# =============================================================================
+
+class MonatsSumme(BaseModel):
+    """Monatliche Summe über alle Anlagen."""
+    jahr: int
+    monat: int
+    pv_erzeugung_kwh: float
+    eigenverbrauch_kwh: float
+    einspeisung_kwh: float
+    anzahl_anlagen: int
+
+
+class CommunityGesamtwerte(BaseModel):
+    """Aufsummierte Gesamtwerte aller Community-Anlagen."""
+    # Meta
+    anzahl_anlagen: int
+    anzahl_monate_total: int
+    stand: str  # ISO Timestamp
+
+    # Installierte Leistung
+    gesamt_kwp: float
+    gesamt_speicher_kwh: float
+
+    # Energie-Gesamtwerte (kumuliert über alle Anlagen & Monate)
+    pv_erzeugung_kwh: float
+    pv_einspeisung_kwh: float
+    pv_eigenverbrauch_kwh: float  # erzeugung - einspeisung
+    netzbezug_kwh: float
+
+    # Speicher
+    speicher_anzahl: int
+    speicher_ladung_kwh: float
+    speicher_entladung_kwh: float
+
+    # Wärmepumpe
+    wp_anzahl: int
+    wp_stromverbrauch_kwh: float
+    wp_waerme_kwh: float  # heizwaerme + warmwasser
+
+    # E-Mobilität
+    eauto_anzahl: int
+    wallbox_anzahl: int
+    eauto_km: float
+    eauto_ladung_kwh: float
+    eauto_pv_kwh: float
+    wallbox_ladung_kwh: float
+    wallbox_pv_kwh: float
+
+    # Balkonkraftwerke
+    bkw_anzahl: int
+    bkw_erzeugung_kwh: float
+
+    # Impact
+    co2_vermieden_kg: float  # eigenverbrauch × 0.38 kg/kWh
+
+    # Monatliche Summen (letzte 12 Monate)
+    monatliche_summen: list[MonatsSumme]
+
+
 # Forward reference auflösen
 SubmitResponse.model_rebuild()

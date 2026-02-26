@@ -24,6 +24,8 @@ from schemas import (
     Ranking,
     RankingEintrag,
     RegionStatistik,
+    CommunityGesamtwerte,
+    MonatsSumme,
 )
 
 router = APIRouter(prefix="/statistics", tags=["Erweiterte Statistiken"])
@@ -146,6 +148,135 @@ async def get_global_statistics(db: AsyncSession = Depends(get_db)):
         ausstattungsquoten=ausstattungsquoten,
         typische_anlage=typische_anlage,
         stand=datetime.utcnow().isoformat() + "Z",
+    )
+
+
+@router.get("/global/totals", response_model=CommunityGesamtwerte)
+async def get_global_totals(db: AsyncSession = Depends(get_db)):
+    """
+    Liefert aufsummierte Gesamtwerte aller Community-Anlagen.
+
+    Verwendet für:
+    - Impact Tab: Hero-Banner, Energie-Bilanz, Komponenten-Übersicht
+    """
+    # --- Anlage-Aggregate ---
+    result = await db.execute(
+        select(
+            func.count(Anlage.id).label("anzahl"),
+            func.sum(Anlage.kwp).label("sum_kwp"),
+            func.sum(func.coalesce(Anlage.speicher_kwh, 0)).label("sum_speicher"),
+            func.count(case((Anlage.speicher_kwh > 0, 1))).label("n_speicher"),
+            func.count(case((Anlage.hat_waermepumpe == True, 1))).label("n_wp"),
+            func.count(case((Anlage.hat_eauto == True, 1))).label("n_eauto"),
+            func.count(case((Anlage.hat_wallbox == True, 1))).label("n_wallbox"),
+            func.count(case((Anlage.hat_balkonkraftwerk == True, 1))).label("n_bkw"),
+        )
+    )
+    anlage_row = result.one()
+    anzahl_anlagen = anlage_row.anzahl or 0
+
+    if anzahl_anlagen == 0:
+        return CommunityGesamtwerte(
+            anzahl_anlagen=0, anzahl_monate_total=0,
+            stand=datetime.utcnow().isoformat() + "Z",
+            gesamt_kwp=0, gesamt_speicher_kwh=0,
+            pv_erzeugung_kwh=0, pv_einspeisung_kwh=0,
+            pv_eigenverbrauch_kwh=0, netzbezug_kwh=0,
+            speicher_anzahl=0, speicher_ladung_kwh=0, speicher_entladung_kwh=0,
+            wp_anzahl=0, wp_stromverbrauch_kwh=0, wp_waerme_kwh=0,
+            eauto_anzahl=0, wallbox_anzahl=0, eauto_km=0,
+            eauto_ladung_kwh=0, eauto_pv_kwh=0,
+            wallbox_ladung_kwh=0, wallbox_pv_kwh=0,
+            bkw_anzahl=0, bkw_erzeugung_kwh=0,
+            co2_vermieden_kg=0, monatliche_summen=[],
+        )
+
+    # --- Monatswerte-Aggregate (ein Query für alle Summen) ---
+    result = await db.execute(
+        select(
+            func.count(Monatswert.id).label("n_monate"),
+            func.sum(func.coalesce(Monatswert.ertrag_kwh, 0)).label("sum_ertrag"),
+            func.sum(func.coalesce(Monatswert.einspeisung_kwh, 0)).label("sum_einspeisung"),
+            func.sum(func.coalesce(Monatswert.netzbezug_kwh, 0)).label("sum_netzbezug"),
+            func.sum(func.coalesce(Monatswert.speicher_ladung_kwh, 0)).label("sum_sp_lad"),
+            func.sum(func.coalesce(Monatswert.speicher_entladung_kwh, 0)).label("sum_sp_entl"),
+            func.sum(func.coalesce(Monatswert.wp_stromverbrauch_kwh, 0)).label("sum_wp_strom"),
+            func.sum(
+                func.coalesce(Monatswert.wp_heizwaerme_kwh, 0)
+                + func.coalesce(Monatswert.wp_warmwasser_kwh, 0)
+            ).label("sum_wp_waerme"),
+            func.sum(func.coalesce(Monatswert.eauto_km, 0)).label("sum_eauto_km"),
+            func.sum(func.coalesce(Monatswert.eauto_ladung_gesamt_kwh, 0)).label("sum_eauto_lad"),
+            func.sum(func.coalesce(Monatswert.eauto_ladung_pv_kwh, 0)).label("sum_eauto_pv"),
+            func.sum(func.coalesce(Monatswert.wallbox_ladung_kwh, 0)).label("sum_wb_lad"),
+            func.sum(func.coalesce(Monatswert.wallbox_ladung_pv_kwh, 0)).label("sum_wb_pv"),
+            func.sum(func.coalesce(Monatswert.bkw_erzeugung_kwh, 0)).label("sum_bkw"),
+        )
+    )
+    mw_row = result.one()
+
+    sum_ertrag = float(mw_row.sum_ertrag or 0)
+    sum_einspeisung = float(mw_row.sum_einspeisung or 0)
+    eigenverbrauch = max(0, sum_ertrag - sum_einspeisung)
+
+    # --- Monatliche Summen (letzte 12 Monate) ---
+    result = await db.execute(
+        select(
+            Monatswert.jahr,
+            Monatswert.monat,
+            func.sum(func.coalesce(Monatswert.ertrag_kwh, 0)).label("sum_ertrag"),
+            func.sum(func.coalesce(Monatswert.einspeisung_kwh, 0)).label("sum_einspeisung"),
+            func.count(distinct(Monatswert.anlage_id)).label("n_anlagen"),
+        )
+        .group_by(Monatswert.jahr, Monatswert.monat)
+        .order_by(Monatswert.jahr.desc(), Monatswert.monat.desc())
+        .limit(12)
+    )
+    rows = result.all()
+
+    monatliche_summen = []
+    for row in reversed(rows):  # Chronologisch sortieren
+        ertrag = float(row.sum_ertrag or 0)
+        einspeisung = float(row.sum_einspeisung or 0)
+        monatliche_summen.append(MonatsSumme(
+            jahr=row.jahr,
+            monat=row.monat,
+            pv_erzeugung_kwh=round(ertrag, 1),
+            eigenverbrauch_kwh=round(max(0, ertrag - einspeisung), 1),
+            einspeisung_kwh=round(einspeisung, 1),
+            anzahl_anlagen=row.n_anlagen,
+        ))
+
+    # CO2-Faktor: 0.38 kg/kWh (deutscher Strommix)
+    co2_vermieden = eigenverbrauch * 0.38
+
+    return CommunityGesamtwerte(
+        anzahl_anlagen=anzahl_anlagen,
+        anzahl_monate_total=mw_row.n_monate or 0,
+        stand=datetime.utcnow().isoformat() + "Z",
+        gesamt_kwp=round(float(anlage_row.sum_kwp or 0), 1),
+        gesamt_speicher_kwh=round(float(anlage_row.sum_speicher or 0), 1),
+        pv_erzeugung_kwh=round(sum_ertrag, 1),
+        pv_einspeisung_kwh=round(sum_einspeisung, 1),
+        pv_eigenverbrauch_kwh=round(eigenverbrauch, 1),
+        netzbezug_kwh=round(float(mw_row.sum_netzbezug or 0), 1),
+        speicher_anzahl=anlage_row.n_speicher or 0,
+        speicher_ladung_kwh=round(float(mw_row.sum_sp_lad or 0), 1),
+        speicher_entladung_kwh=round(float(mw_row.sum_sp_entl or 0), 1),
+        wp_anzahl=anlage_row.n_wp or 0,
+        wp_stromverbrauch_kwh=round(float(mw_row.sum_wp_strom or 0), 1),
+        wp_waerme_kwh=round(float(mw_row.sum_wp_waerme or 0), 1),
+        eauto_anzahl=anlage_row.n_eauto or 0,
+        wallbox_anzahl=anlage_row.n_wallbox or 0,
+        eauto_km=round(float(mw_row.sum_eauto_km or 0), 1),
+        eauto_ladung_kwh=round(float(mw_row.sum_eauto_lad or 0), 1),
+        eauto_pv_kwh=round(float(mw_row.sum_eauto_pv or 0), 1),
+        wallbox_ladung_kwh=round(float(mw_row.sum_wb_lad or 0), 1),
+        wallbox_pv_kwh=round(float(mw_row.sum_wb_pv or 0), 1),
+        bkw_anzahl=anlage_row.n_bkw or 0,
+        bkw_erzeugung_kwh=round(float(mw_row.sum_bkw or 0), 1),
+        co2_vermieden_kg=round(co2_vermieden, 1),
+        monatliche_summen=monatliche_summen,
     )
 
 
