@@ -23,8 +23,11 @@ eedc-community/
 ├── backend/
 │   ├── api/
 │   │   ├── benchmark.py      # Benchmark-Vergleiche
-│   │   ├── stats.py          # Community-Statistiken
-│   │   └── submit.py         # Daten einreichen/löschen
+│   │   ├── components.py     # Komponenten-Benchmarks (Speicher, WP, E-Auto)
+│   │   ├── statistics.py     # Erweiterte Statistiken (Global, Regional, Rankings)
+│   │   ├── stats.py          # Community-Basisstatistiken
+│   │   ├── submit.py         # Daten einreichen/löschen
+│   │   └── trends.py         # Trend-Analysen (Zeitreihen, Degradation)
 │   ├── core/
 │   │   ├── config.py         # Einstellungen
 │   │   └── database.py       # DB-Verbindung
@@ -46,28 +49,35 @@ eedc-community/
 └── docs/archive/                   # Archivierte Planungsdokumente
 ```
 
-## API Endpoints
+## API Endpoints (19 Endpoints)
 
 | Endpoint | Methode | Beschreibung |
 |----------|---------|--------------|
 | `/api/health` | GET | Health Check |
-| `/api/submit` | POST | Anlagendaten einreichen |
+| **Submit** |||
+| `/api/submit` | POST | Anlagendaten einreichen/aktualisieren |
 | `/api/submit/{hash}` | DELETE | Eigene Daten löschen |
-| `/api/stats` | GET | Aggregierte Statistiken |
-| `/api/benchmark/anlage/{hash}` | GET | Personalisierter Benchmark |
-| `/api/benchmark/vergleich` | GET | Vergleichsdaten ohne Speicherung |
+| **Stats** |||
+| `/api/stats` | GET | Aggregierte Community-Statistiken |
+| `/api/stats/regionen` | GET | Alle Regionen mit Anlagenzahl |
+| `/api/stats/monat/{jahr}/{monat}` | GET | Detail-Statistiken für einen Monat |
+| **Benchmark** |||
+| `/api/benchmark/anlage/{hash}` | GET | Personalisierter Benchmark (mit Zeitraum-Filter) |
+| `/api/benchmark/vergleich` | GET | Was-wäre-wenn Vergleich ohne Speicherung |
+| **Statistics** |||
 | `/api/statistics/global` | GET | Globale Community-Kennzahlen |
 | `/api/statistics/monthly-averages` | GET | Monatliche Ø-Erträge (Community-Trend) |
 | `/api/statistics/regional` | GET | Performance-Metriken pro Bundesland/Land |
-| `/api/statistics/distributions/{metric}` | GET | Verteilungshistogramm einer Metrik |
-| `/api/statistics/rankings/{category}` | GET | Rankings nach Kategorie |
-| `/api/components/speicher` | GET | Speicher-Benchmark (Effizienz, Zyklen) |
-| `/api/components/waermepumpe` | GET | Wärmepumpen-Benchmark (JAZ) |
-| `/api/components/eauto` | GET | E-Auto-Benchmark (PV-Anteil, km) |
-| `/api/components/wallbox` | GET | Wallbox-Benchmark (Ladung, PV-Anteil) |
-| `/api/components/bkw` | GET | BKW-Benchmark (spez. Ertrag) |
-| `/api/trends/monatlich` | GET | Community-Ertragsverlauf über Zeit |
-| `/api/trends/degradation` | GET | Degradations-Analyse (Ertrag nach Alter) |
+| `/api/statistics/regional/{region}` | GET | Detail-Statistiken für eine Region |
+| `/api/statistics/distributions/{metric}` | GET | Verteilungshistogramm (kwp, spez_ertrag, speicher_kwh, autarkie, neigung) |
+| `/api/statistics/rankings/{category}` | GET | Rankings (spez_ertrag, autarkie, speicher_effizienz, jaz, eauto_pv_anteil) |
+| **Components** |||
+| `/api/components/speicher/by-class` | GET | Speicher-Benchmark nach Kapazitätsklasse |
+| `/api/components/waermepumpe/by-region` | GET | Wärmepumpen-Benchmark (JAZ) nach Region |
+| `/api/components/eauto/by-usage` | GET | E-Auto-Benchmark nach Nutzungsintensität |
+| **Trends** |||
+| `/api/trends/{period}` | GET | Community-Trend (12_monate, 24_monate, gesamt) |
+| `/api/trends/degradation` | GET | Degradations-Analyse (Ertrag nach Anlagenalter) |
 
 ## Entwicklung
 

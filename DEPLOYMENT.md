@@ -48,7 +48,7 @@ docker images | grep eedc-community
 
 4. **Build method**: Web editor
 
-5. **Compose-Inhalt einfügen** (aus `docker-compose.portainer.yml`):
+5. **Compose-Inhalt einfügen** (folgendes YAML in den Web-Editor kopieren):
 
 ```yaml
 version: "3.8"

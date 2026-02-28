@@ -50,19 +50,22 @@ git push
 /home/gernot/claude/eedc-community/
 ├── backend/
 │   ├── api/
-│   │   ├── benchmark.py      # GET /api/benchmark/anlage/{hash}
-│   │   ├── stats.py          # GET /api/stats
-│   │   └── submit.py         # POST/DELETE /api/submit
+│   │   ├── benchmark.py      # GET /api/benchmark/anlage/{hash}, /vergleich
+│   │   ├── components.py     # GET /api/components/speicher/by-class, waermepumpe/by-region, eauto/by-usage
+│   │   ├── statistics.py     # GET /api/statistics/global, monthly-averages, regional, distributions, rankings
+│   │   ├── stats.py          # GET /api/stats, /regionen, /monat/{jahr}/{monat}
+│   │   ├── submit.py         # POST/DELETE /api/submit
+│   │   └── trends.py         # GET /api/trends/{period}, /degradation
 │   ├── static/               # ← Frontend Build-Output (von vite)
 │   │   ├── index.html
 │   │   └── assets/
-│   ├── main.py               # FastAPI Entry Point
+│   ├── main.py               # FastAPI Entry Point (6 Router)
 │   ├── models.py             # Anlage, Monatswert, RateLimit
 │   └── schemas.py            # Pydantic Input/Output
 ├── frontend/
 │   ├── src/App.tsx           # Haupt-Komponente
 │   └── vite.config.ts        # outDir: ../backend/static
-└── PLAN_COMMUNITY_DASHBOARD_v2.md  # Roadmap
+└── docs/archive/             # Archivierte Planungsdokumente
 ```
 
 ## Datenmodell
@@ -81,6 +84,12 @@ class Anlage(Base):
     hat_waermepumpe: bool
     hat_eauto: bool
     hat_wallbox: bool
+    hat_balkonkraftwerk: bool
+    hat_sonstiges: bool
+    wallbox_kw: float | None
+    bkw_wp: float | None
+    sonstiges_bezeichnung: str | None
+    update_count: int         # default: 0
 ```
 
 ### Monatswert
@@ -90,23 +99,63 @@ class Monatswert(Base):
     anlage_id: int            # FK → Anlage
     jahr: int
     monat: int
+    # Energie-Basisdaten
     ertrag_kwh: float
     einspeisung_kwh: float | None
     netzbezug_kwh: float | None
     autarkie_prozent: float | None
     eigenverbrauch_prozent: float | None
+    # Speicher-KPIs
+    speicher_ladung_kwh: float | None
+    speicher_entladung_kwh: float | None
+    speicher_ladung_netz_kwh: float | None
+    # WP-KPIs
+    wp_stromverbrauch_kwh: float | None
+    wp_heizwaerme_kwh: float | None
+    wp_warmwasser_kwh: float | None
+    # E-Auto-KPIs
+    eauto_ladung_gesamt_kwh: float | None
+    eauto_ladung_pv_kwh: float | None
+    eauto_km: float | None
+    eauto_v2h_kwh: float | None
+    # Wallbox-KPIs
+    wallbox_ladung_kwh: float | None
+    wallbox_ladung_pv_kwh: float | None
+    wallbox_ladevorgaenge: int | None
+    # BKW-KPIs
+    bkw_erzeugung_kwh: float | None
+    bkw_eigenverbrauch_kwh: float | None
 ```
 
-## API Endpoints
+## API Endpoints (19 Endpoints, 6 Router)
 
 | Endpoint | Methode | Beschreibung |
 |----------|---------|--------------|
 | `/api/health` | GET | Health Check |
-| `/api/stats` | GET | Community-Statistiken |
-| `/api/submit` | POST | Anlagendaten einreichen |
+| **Submit** |||
+| `/api/submit` | POST | Anlagendaten einreichen/aktualisieren |
 | `/api/submit/{hash}` | DELETE | Daten löschen |
-| `/api/benchmark/anlage/{hash}` | GET | Personalisierter Benchmark |
-| `/api/benchmark/vergleich` | GET | Was-wäre-wenn Vergleich |
+| **Stats** |||
+| `/api/stats` | GET | Community-Basisstatistiken |
+| `/api/stats/regionen` | GET | Alle Regionen mit Anlagenzahl |
+| `/api/stats/monat/{jahr}/{monat}` | GET | Detail-Statistiken für einen Monat |
+| **Benchmark** |||
+| `/api/benchmark/anlage/{hash}` | GET | Personalisierter Benchmark (Query: zeitraum, jahr) |
+| `/api/benchmark/vergleich` | GET | Was-wäre-wenn Vergleich (Query: kwp, region) |
+| **Statistics** |||
+| `/api/statistics/global` | GET | Globale Community-Kennzahlen |
+| `/api/statistics/monthly-averages` | GET | Monatliche Ø-Erträge (Query: monate=12) |
+| `/api/statistics/regional` | GET | Performance-Metriken pro Bundesland |
+| `/api/statistics/regional/{region}` | GET | Detail-Statistiken für eine Region |
+| `/api/statistics/distributions/{metric}` | GET | Verteilungshistogramm (kwp, spez_ertrag, speicher_kwh, autarkie, neigung) |
+| `/api/statistics/rankings/{category}` | GET | Rankings (spez_ertrag, autarkie, speicher_effizienz, jaz, eauto_pv_anteil) |
+| **Components** |||
+| `/api/components/speicher/by-class` | GET | Speicher nach Kapazitätsklasse |
+| `/api/components/waermepumpe/by-region` | GET | Wärmepumpen-JAZ nach Region |
+| `/api/components/eauto/by-usage` | GET | E-Auto nach Nutzungsintensität |
+| **Trends** |||
+| `/api/trends/{period}` | GET | Community-Trend (12_monate, 24_monate, gesamt) |
+| `/api/trends/degradation` | GET | Degradation nach Anlagenalter |
 
 ## Frontend-Modi
 
