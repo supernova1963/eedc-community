@@ -199,8 +199,13 @@ async def submit_anlage(
                 detail="Maximale Anzahl Updates pro Monat erreicht."
             )
 
-        # Anlagendaten aktualisieren
+        # Anlagendaten aktualisieren (alle Felder, nicht nur Komponenten)
+        anlage.region = data.region
+        anlage.kwp = data.kwp
+        anlage.ausrichtung = data.ausrichtung
+        anlage.neigung_grad = data.neigung_grad
         anlage.speicher_kwh = data.speicher_kwh
+        anlage.installation_jahr = data.installation_jahr
         anlage.hat_waermepumpe = data.hat_waermepumpe
         anlage.hat_eauto = data.hat_eauto
         anlage.hat_wallbox = data.hat_wallbox
