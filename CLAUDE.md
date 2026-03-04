@@ -177,7 +177,23 @@ class Monatswert(Base):
 | Push rejected (workflow scope) | Workflow-Datei nicht ändern oder manuell auf GitHub |
 | API-Route gibt HTML zurück | Catch-all Route wurde entfernt, sollte nicht mehr passieren |
 
-## Verbindung zu EEDC
+## Verbundenes Repository: eedc-homeassistant
+
+Dieses Projekt ist **eng gekoppelt** mit dem EEDC Add-on und wird gemeinsam entwickelt:
+
+| Repository | Zweck | Technik |
+| --- | --- | --- |
+| **[eedc-homeassistant](https://github.com/supernova1963/eedc-homeassistant)** | PV-Analyse Add-on (Frontend + Backend) | FastAPI, React, SQLite |
+| **eedc-community** (dieses) | Anonymer Community-Benchmark-Server | FastAPI, React, PostgreSQL |
+
+**Lokaler Pfad eedc-homeassistant:** `/home/gernot/claude/eedc-homeassistant`
+
+> **Beachte:** Änderungen am Datenmodell (z.B. neue Monatswert-Felder, Komponenten-KPIs)
+> müssen in **beiden** Repositories synchron angepasst werden:
+> Schemas in `eedc-community/backend/schemas.py` und Aufbereitung in
+> `eedc-homeassistant/eedc/backend/services/community_service.py`.
+
+### Datenfluss
 
 Das EEDC Add-on (supernova1963/eedc-homeassistant) sendet Daten hierher:
 
