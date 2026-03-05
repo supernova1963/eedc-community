@@ -134,7 +134,7 @@ export default function MonatsvergleichTab() {
 
           {/* PV-Kern-KPIs */}
           <KPISection title="PV-Ertrag">
-            <KPIBlock label="Spez. Ertrag" kpi={daten.spez_ertrag} unit="kWh/kWp" />
+            <KPIBlock label="Ertrag pro kWp" kpi={daten.spez_ertrag} unit="kWh/kWp" />
             {daten.autarkie && <KPIBlock label="Autarkie" kpi={daten.autarkie} unit="%" />}
             {daten.eigenverbrauch && <KPIBlock label="Eigenverbrauch" kpi={daten.eigenverbrauch} unit="%" />}
             {daten.einspeisung && <KPIBlock label="Einspeisung" kpi={daten.einspeisung} unit="kWh" decimals={0} />}
