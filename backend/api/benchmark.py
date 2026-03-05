@@ -15,17 +15,19 @@ from schemas import (
     AnlageOutput, MonatswertOutput, BenchmarkData,
     KPIVergleich, PVBenchmark, SpeicherBenchmark, WaermepumpeBenchmark,
     EAutoBenchmark, WallboxBenchmark, BKWBenchmark, ErweiterteBenchmarkData,
+    MonatsVergleich, MonatsKPI, MonatsRegionVergleich,
 )
 
 router = APIRouter(prefix="/benchmark", tags=["Benchmark"])
 
 # Zeitraum-Typen
-ZeitraumTyp = Literal["letzter_monat", "letzte_12_monate", "letztes_vollstaendiges_jahr", "jahr", "seit_installation"]
+ZeitraumTyp = Literal["letzter_monat", "letzte_12_monate", "letztes_vollstaendiges_jahr", "jahr", "seit_installation", "monat"]
 
 
 def get_zeitraum_filter(
     zeitraum: ZeitraumTyp,
     jahr: int | None = None,
+    monat: int | None = None,
     installation_jahr: int | None = None,
 ) -> tuple[int, int, int, int]:
     """
@@ -56,6 +58,9 @@ def get_zeitraum_filter(
 
     elif zeitraum == "jahr" and jahr:
         return (jahr, 1, jahr, 12)
+
+    elif zeitraum == "monat" and jahr and monat:
+        return (jahr, monat, jahr, monat)
 
     elif zeitraum == "seit_installation" and installation_jahr:
         return (installation_jahr, 1, now.year, now.month - 1 if now.month > 1 else 12)
@@ -463,7 +468,8 @@ async def berechne_region_durchschnitt(db: AsyncSession, region: str) -> float:
 async def get_anlage_benchmark(
     anlage_hash: str,
     zeitraum: ZeitraumTyp = Query("letzte_12_monate", description="Vergleichszeitraum"),
-    jahr: int | None = Query(None, ge=2010, le=2050, description="Jahr für zeitraum=jahr"),
+    jahr: int | None = Query(None, ge=2010, le=2050, description="Jahr für zeitraum=jahr oder zeitraum=monat"),
+    monat: int | None = Query(None, ge=1, le=12, description="Monat für zeitraum=monat"),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -473,6 +479,7 @@ async def get_anlage_benchmark(
     Zeitraum-Optionen:
     - letzter_monat: Nur der Vormonat
     - letzte_12_monate: Die letzten 12 abgeschlossenen Monate (Standard)
+    - monat: Ein bestimmter Monat (Parameter 'jahr' und 'monat' erforderlich)
     - jahr: Ein bestimmtes Jahr (Parameter 'jahr' erforderlich)
     - seit_installation: Alle Daten seit Installationsjahr
     """
@@ -486,7 +493,7 @@ async def get_anlage_benchmark(
 
     # Zeitraum-Filter bestimmen
     von_jahr, von_monat, bis_jahr, bis_monat = get_zeitraum_filter(
-        zeitraum, jahr, anlage.installation_jahr
+        zeitraum, jahr, monat, anlage.installation_jahr
     )
 
     # Monatswerte laden
@@ -685,6 +692,7 @@ async def get_anlage_benchmark(
     zeitraum_labels = {
         "letzter_monat": f"{bis_monat:02d}/{bis_jahr}",
         "letzte_12_monate": "letzte 12 Monate",
+        "monat": f"{monat:02d}/{jahr}" if monat and jahr else "Monat",
         "jahr": f"Jahr {jahr}" if jahr else "Jahr",
         "seit_installation": f"seit {anlage.installation_jahr}",
     }
@@ -721,6 +729,180 @@ async def get_anlage_benchmark(
         "zeitraum": zeitraum,
         "zeitraum_label": zeitraum_labels.get(zeitraum, zeitraum),
     }
+
+
+@router.get("/monat/{jahr}/{monat}", response_model=MonatsVergleich)
+async def get_monats_benchmark(
+    jahr: int,
+    monat: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Liefert Community-Durchschnitte aller KPIs für einen bestimmten Monat.
+    Ermöglicht Monats-Vergleiche: "Wie war der Februar 2026 in der Community?"
+    """
+    if monat < 1 or monat > 12:
+        raise HTTPException(status_code=400, detail="Monat muss zwischen 1 und 12 liegen")
+
+    # Alle Monatswerte für diesen Monat mit Anlagendaten laden
+    result = await db.execute(
+        select(Monatswert, Anlage)
+        .join(Anlage)
+        .where(Monatswert.jahr == jahr)
+        .where(Monatswert.monat == monat)
+    )
+    rows = result.all()
+
+    if not rows:
+        raise HTTPException(status_code=404, detail=f"Keine Daten für {monat:02d}/{jahr}")
+
+    anzahl = len(rows)
+
+    # --- PV-Kern-KPIs ---
+    spez_ertraege = []
+    autarkien = []
+    eigenverbrauch_werte = []
+    einspeisungen = []
+    netzbezuege = []
+
+    # --- Speicher ---
+    sp_ladung_werte = []
+    sp_entladung_werte = []
+    sp_wirkungsgrad_werte = []
+
+    # --- Wärmepumpe ---
+    wp_strom_werte = []
+    wp_waerme_werte = []
+    wp_jaz_werte = []
+
+    # --- E-Auto ---
+    eauto_ladung_werte = []
+    eauto_pv_anteil_werte = []
+    eauto_km_werte = []
+
+    # --- Wallbox ---
+    wb_ladung_werte = []
+    wb_pv_anteil_werte = []
+
+    # --- BKW ---
+    bkw_erzeugung_werte = []
+
+    # --- Regional ---
+    region_daten: dict[str, list[dict]] = {}
+
+    for mw, anlage in rows:
+        # Spez. Ertrag
+        if mw.ertrag_kwh is not None and anlage.kwp and anlage.kwp > 0:
+            spez = mw.ertrag_kwh / anlage.kwp
+            spez_ertraege.append(spez)
+
+            # Regional sammeln
+            if anlage.region not in region_daten:
+                region_daten[anlage.region] = []
+            region_daten[anlage.region].append({
+                "spez": spez,
+                "autarkie": mw.autarkie_prozent,
+            })
+
+        if mw.autarkie_prozent is not None:
+            autarkien.append(mw.autarkie_prozent)
+        if mw.eigenverbrauch_prozent is not None:
+            eigenverbrauch_werte.append(mw.eigenverbrauch_prozent)
+        if mw.einspeisung_kwh is not None:
+            einspeisungen.append(mw.einspeisung_kwh)
+        if mw.netzbezug_kwh is not None:
+            netzbezuege.append(mw.netzbezug_kwh)
+
+        # Speicher
+        if mw.speicher_ladung_kwh is not None:
+            sp_ladung_werte.append(mw.speicher_ladung_kwh)
+        if mw.speicher_entladung_kwh is not None:
+            sp_entladung_werte.append(mw.speicher_entladung_kwh)
+        if (mw.speicher_ladung_kwh and mw.speicher_ladung_kwh > 0
+                and mw.speicher_entladung_kwh is not None):
+            sp_wirkungsgrad_werte.append(
+                mw.speicher_entladung_kwh / mw.speicher_ladung_kwh * 100
+            )
+
+        # Wärmepumpe
+        if mw.wp_stromverbrauch_kwh is not None and mw.wp_stromverbrauch_kwh > 0:
+            wp_strom_werte.append(mw.wp_stromverbrauch_kwh)
+            waerme = (mw.wp_heizwaerme_kwh or 0) + (mw.wp_warmwasser_kwh or 0)
+            if waerme > 0:
+                wp_waerme_werte.append(waerme)
+                wp_jaz_werte.append(waerme / mw.wp_stromverbrauch_kwh)
+
+        # E-Auto
+        if mw.eauto_ladung_gesamt_kwh is not None and mw.eauto_ladung_gesamt_kwh > 0:
+            eauto_ladung_werte.append(mw.eauto_ladung_gesamt_kwh)
+            if mw.eauto_ladung_pv_kwh is not None:
+                eauto_pv_anteil_werte.append(
+                    mw.eauto_ladung_pv_kwh / mw.eauto_ladung_gesamt_kwh * 100
+                )
+        if mw.eauto_km is not None and mw.eauto_km > 0:
+            eauto_km_werte.append(mw.eauto_km)
+
+        # Wallbox
+        if mw.wallbox_ladung_kwh is not None and mw.wallbox_ladung_kwh > 0:
+            wb_ladung_werte.append(mw.wallbox_ladung_kwh)
+            if mw.wallbox_ladung_pv_kwh is not None:
+                wb_pv_anteil_werte.append(
+                    mw.wallbox_ladung_pv_kwh / mw.wallbox_ladung_kwh * 100
+                )
+
+        # BKW
+        if mw.bkw_erzeugung_kwh is not None and mw.bkw_erzeugung_kwh > 0:
+            bkw_erzeugung_werte.append(mw.bkw_erzeugung_kwh)
+
+    # --- Regionale Aufschlüsselung ---
+    regionen = []
+    for region, daten in sorted(region_daten.items()):
+        if len(daten) >= 1:
+            spez_values = [d["spez"] for d in daten]
+            autarkie_values = [d["autarkie"] for d in daten if d["autarkie"] is not None]
+            regionen.append(MonatsRegionVergleich(
+                region=region,
+                anzahl_anlagen=len(daten),
+                spez_ertrag=round(sum(spez_values) / len(spez_values), 1),
+                autarkie=round(sum(autarkie_values) / len(autarkie_values), 1) if autarkie_values else None,
+            ))
+
+    return MonatsVergleich(
+        jahr=jahr,
+        monat=monat,
+        anzahl_anlagen=anzahl,
+        spez_ertrag=_make_monats_kpi(spez_ertraege),
+        autarkie=_make_monats_kpi(autarkien) if autarkien else None,
+        eigenverbrauch=_make_monats_kpi(eigenverbrauch_werte) if eigenverbrauch_werte else None,
+        einspeisung=_make_monats_kpi(einspeisungen) if einspeisungen else None,
+        netzbezug=_make_monats_kpi(netzbezuege) if netzbezuege else None,
+        speicher_ladung=_make_monats_kpi(sp_ladung_werte) if sp_ladung_werte else None,
+        speicher_entladung=_make_monats_kpi(sp_entladung_werte) if sp_entladung_werte else None,
+        speicher_wirkungsgrad=_make_monats_kpi(sp_wirkungsgrad_werte) if sp_wirkungsgrad_werte else None,
+        wp_stromverbrauch=_make_monats_kpi(wp_strom_werte) if wp_strom_werte else None,
+        wp_waerme=_make_monats_kpi(wp_waerme_werte) if wp_waerme_werte else None,
+        wp_jaz=_make_monats_kpi(wp_jaz_werte) if wp_jaz_werte else None,
+        eauto_ladung=_make_monats_kpi(eauto_ladung_werte) if eauto_ladung_werte else None,
+        eauto_pv_anteil=_make_monats_kpi(eauto_pv_anteil_werte) if eauto_pv_anteil_werte else None,
+        eauto_km=_make_monats_kpi(eauto_km_werte) if eauto_km_werte else None,
+        wallbox_ladung=_make_monats_kpi(wb_ladung_werte) if wb_ladung_werte else None,
+        wallbox_pv_anteil=_make_monats_kpi(wb_pv_anteil_werte) if wb_pv_anteil_werte else None,
+        bkw_erzeugung=_make_monats_kpi(bkw_erzeugung_werte) if bkw_erzeugung_werte else None,
+        regionen=regionen if regionen else None,
+    )
+
+
+def _make_monats_kpi(werte: list[float]) -> MonatsKPI:
+    """Erstellt ein MonatsKPI-Objekt aus einer Liste von Werten."""
+    from statistics import median as stat_median
+    werte_sorted = sorted(werte)
+    return MonatsKPI(
+        durchschnitt=round(sum(werte) / len(werte), 1),
+        median=round(stat_median(werte), 1) if len(werte) >= 3 else None,
+        min=round(werte_sorted[0], 1) if len(werte) >= 3 else None,
+        max=round(werte_sorted[-1], 1) if len(werte) >= 3 else None,
+        anzahl_anlagen=len(werte),
+    )
 
 
 @router.get("/vergleich")

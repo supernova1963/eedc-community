@@ -175,6 +175,60 @@ export interface MonatsSumme {
   anzahl_anlagen: number
 }
 
+// Monatsvergleich-Typen
+export interface MonatsKPI {
+  durchschnitt: number
+  median: number | null
+  min: number | null
+  max: number | null
+  anzahl_anlagen: number
+}
+
+export interface MonatsRegionVergleich {
+  region: string
+  anzahl_anlagen: number
+  spez_ertrag: number
+  autarkie: number | null
+}
+
+export interface MonatsVergleich {
+  jahr: number
+  monat: number
+  anzahl_anlagen: number
+  spez_ertrag: MonatsKPI
+  autarkie: MonatsKPI | null
+  eigenverbrauch: MonatsKPI | null
+  einspeisung: MonatsKPI | null
+  netzbezug: MonatsKPI | null
+  speicher_ladung: MonatsKPI | null
+  speicher_entladung: MonatsKPI | null
+  speicher_wirkungsgrad: MonatsKPI | null
+  wp_stromverbrauch: MonatsKPI | null
+  wp_waerme: MonatsKPI | null
+  wp_jaz: MonatsKPI | null
+  eauto_ladung: MonatsKPI | null
+  eauto_pv_anteil: MonatsKPI | null
+  eauto_km: MonatsKPI | null
+  wallbox_ladung: MonatsKPI | null
+  wallbox_pv_anteil: MonatsKPI | null
+  bkw_erzeugung: MonatsKPI | null
+  regionen: MonatsRegionVergleich[] | null
+}
+
+export interface VerfuegbarerMonat {
+  jahr: number
+  monat: number
+  anzahl_anlagen: number
+}
+
+export interface VerfuegbareMonate {
+  monate: VerfuegbarerMonat[]
+  aeltester: string | null
+  neuester: string | null
+}
+
+export type TabId = 'uebersicht' | 'monatsvergleich' | 'regionen' | 'impact'
+
 export interface CommunityGesamtwerte {
   anzahl_anlagen: number
   anzahl_monate_total: number

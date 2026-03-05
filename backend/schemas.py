@@ -507,5 +507,80 @@ class CommunityGesamtwerte(BaseModel):
     monatliche_summen: list[MonatsSumme]
 
 
+# =============================================================================
+# Monatsvergleich-Schemas (Einzelmonat-Benchmark)
+# =============================================================================
+
+class MonatsKPI(BaseModel):
+    """Community-Durchschnitt eines KPI für einen Monat."""
+    durchschnitt: float
+    median: float | None = None
+    min: float | None = None
+    max: float | None = None
+    anzahl_anlagen: int
+
+
+class MonatsVergleich(BaseModel):
+    """Umfassender Community-Vergleich für einen Einzelmonat."""
+    jahr: int
+    monat: int
+    anzahl_anlagen: int
+
+    # PV-Kern-KPIs
+    spez_ertrag: MonatsKPI  # kWh/kWp
+    autarkie: MonatsKPI | None = None
+    eigenverbrauch: MonatsKPI | None = None
+    einspeisung: MonatsKPI | None = None
+    netzbezug: MonatsKPI | None = None
+
+    # Speicher
+    speicher_ladung: MonatsKPI | None = None
+    speicher_entladung: MonatsKPI | None = None
+    speicher_wirkungsgrad: MonatsKPI | None = None  # entladung/ladung %
+
+    # Wärmepumpe
+    wp_stromverbrauch: MonatsKPI | None = None
+    wp_waerme: MonatsKPI | None = None
+    wp_jaz: MonatsKPI | None = None
+
+    # E-Auto
+    eauto_ladung: MonatsKPI | None = None
+    eauto_pv_anteil: MonatsKPI | None = None
+    eauto_km: MonatsKPI | None = None
+
+    # Wallbox
+    wallbox_ladung: MonatsKPI | None = None
+    wallbox_pv_anteil: MonatsKPI | None = None
+
+    # BKW
+    bkw_erzeugung: MonatsKPI | None = None
+
+    # Regionale Aufschlüsselung
+    regionen: list["MonatsRegionVergleich"] | None = None
+
+
+class MonatsRegionVergleich(BaseModel):
+    """Regionale Durchschnitte für einen Monat."""
+    region: str
+    anzahl_anlagen: int
+    spez_ertrag: float
+    autarkie: float | None = None
+
+
+class VerfuegbarerMonat(BaseModel):
+    """Ein Monat mit Daten in der Community."""
+    jahr: int
+    monat: int
+    anzahl_anlagen: int
+
+
+class VerfuegbareMonate(BaseModel):
+    """Liste aller verfügbaren Monate."""
+    monate: list[VerfuegbarerMonat]
+    aeltester: str | None = None  # "YYYY-MM"
+    neuester: str | None = None  # "YYYY-MM"
+
+
 # Forward reference auflösen
 SubmitResponse.model_rebuild()
+MonatsVergleich.model_rebuild()

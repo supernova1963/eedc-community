@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import get_db
 from models import Anlage, Monatswert
-from schemas import GesamtStatistik, RegionStatistik, MonatsStatistik
+from schemas import GesamtStatistik, RegionStatistik, MonatsStatistik, VerfuegbareMonate, VerfuegbarerMonat
 
 router = APIRouter(prefix="/stats", tags=["Statistiken"])
 
@@ -341,6 +341,38 @@ async def get_monats_statistiken(db: AsyncSession, limit: int = 12) -> list[Mona
         ))
 
     return statistiken
+
+
+@router.get("/verfuegbare-monate", response_model=VerfuegbareMonate)
+async def get_verfuegbare_monate(db: AsyncSession = Depends(get_db)):
+    """
+    Liefert alle Monate, für die Community-Daten vorliegen.
+    Sortiert chronologisch (neuester zuerst).
+    """
+    result = await db.execute(
+        select(
+            Monatswert.jahr,
+            Monatswert.monat,
+            func.count(distinct(Monatswert.anlage_id)).label("anzahl"),
+        )
+        .group_by(Monatswert.jahr, Monatswert.monat)
+        .order_by(Monatswert.jahr.desc(), Monatswert.monat.desc())
+    )
+    rows = result.all()
+
+    if not rows:
+        return VerfuegbareMonate(monate=[])
+
+    monate = [
+        VerfuegbarerMonat(jahr=r.jahr, monat=r.monat, anzahl_anlagen=r.anzahl)
+        for r in rows
+    ]
+
+    return VerfuegbareMonate(
+        monate=monate,
+        neuester=f"{rows[0].jahr}-{rows[0].monat:02d}",
+        aeltester=f"{rows[-1].jahr}-{rows[-1].monat:02d}",
+    )
 
 
 @router.get("/regionen")
