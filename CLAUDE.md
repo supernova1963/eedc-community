@@ -8,6 +8,14 @@
 **GitHub:** https://github.com/supernova1963/eedc-community
 **Docker Hub:** supernova1963/eedc-community:latest
 
+## Git-Workflow (WICHTIG – gilt für alle Sessions und Rechner!)
+
+1. **Immer auf `main` arbeiten** — keine Feature-Branches. Einzelentwickler-Projekt.
+2. **`eedc` ist Source of Truth** für shared Code (backend/, frontend/). Dort zuerst ändern.
+3. **Nach Push auf `eedc/main`** → sofort `subtree pull` in `eedc-homeassistant`.
+4. **Versionsnummern + Release** nur wenn der User es explizit anfordert.
+5. **`eedc-community`** (dieses Repo) ist unabhängig, aber bei Datenmodell-Änderungen beide Repos synchron anpassen (Schemas hier + community_service.py in eedc).
+
 ## Quick Reference
 
 ### Lokale Entwicklung
