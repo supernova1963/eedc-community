@@ -15,6 +15,7 @@
 3. **Nach Push auf `eedc/main`** → sofort `subtree pull` in `eedc-homeassistant`.
 4. **Versionsnummern + Release** nur wenn der User es explizit anfordert.
 5. **`eedc-community`** (dieses Repo) ist unabhängig, aber bei Datenmodell-Änderungen beide Repos synchron anpassen (Schemas hier + community_service.py in eedc).
+6. **Versionen synchron halten** – `eedc` und `eedc-homeassistant` bekommen immer die gleiche Versionsnummer.
 
 ## Quick Reference
 
