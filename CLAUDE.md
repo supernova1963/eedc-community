@@ -17,6 +17,12 @@
 5. **`eedc-community`** (dieses Repo) ist unabhängig, aber bei Datenmodell-Änderungen beide Repos synchron anpassen (Schemas hier + community_service.py in eedc).
 6. **Versionen synchron halten** – `eedc` und `eedc-homeassistant` bekommen immer die gleiche Versionsnummer.
 
+### Verboten ohne explizite Aufforderung durch den User!
+
+- **`git push`** (in ALLEN Repos) – niemals eigenständig pushen
+- **Releases, Tags, Versionsnummern ändern**
+- **Änderungen in anderen Repos** – nur dieses Repo bearbeiten, es sei denn der User fordert es explizit
+
 ## Quick Reference
 
 ### Lokale Entwicklung
