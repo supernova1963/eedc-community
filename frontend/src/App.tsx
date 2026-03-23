@@ -4,7 +4,7 @@ import Datenschutz from './pages/Datenschutz'
 import CommunityOverview from './pages/CommunityOverview'
 import PersonalizedView from './pages/PersonalizedView'
 import { useDarkMode } from './hooks/useDarkMode'
-import { getAnlageHash, getCurrentPage, navigateTo } from './utils'
+import { getAnlageHash, getCurrentPage, navigateTo, fetchJson } from './utils'
 import type { GesamtStatistik, CommunityGesamtwerte, AnlageBenchmark } from './types'
 
 export default function App() {
@@ -32,27 +32,21 @@ export default function App() {
     const loadData = async () => {
       try {
         // Stats und Totals parallel laden
-        const [statsRes, totalsRes] = await Promise.all([
-          fetch('/api/stats'),
-          fetch('/api/statistics/global/totals'),
+        const [statsData, totalsData] = await Promise.all([
+          fetchJson<GesamtStatistik>('/api/stats'),
+          fetchJson<CommunityGesamtwerte>('/api/statistics/global/totals').catch(() => null),
         ])
-        if (!statsRes.ok) throw new Error('Fehler beim Laden der Statistiken')
-        const statsData = await statsRes.json()
         setStats(statsData)
-
-        if (totalsRes.ok) {
-          const totalsData = await totalsRes.json()
-          setTotals(totalsData)
-        }
+        setTotals(totalsData)
 
         // Wenn anlage Parameter vorhanden, Benchmark laden (immer Jahresertrag)
         if (anlageHash) {
-          const benchmarkRes = await fetch(`/api/benchmark/anlage/${anlageHash}`)
-          if (benchmarkRes.ok) {
-            const benchmarkData = await benchmarkRes.json()
+          try {
+            const benchmarkData = await fetchJson<AnlageBenchmark>(`/api/benchmark/anlage/${anlageHash}`)
             setBenchmark(benchmarkData)
+          } catch {
+            // Anlage nicht gefunden → zeigen wir einfach die Übersicht
           }
-          // Wenn Anlage nicht gefunden, zeigen wir einfach die Übersicht
         }
 
         setLoading(false)
@@ -79,9 +73,9 @@ export default function App() {
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="text-center bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8">
+        <div className="text-center bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 max-w-xl">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Fehler</h1>
-          <p className="text-gray-600 dark:text-gray-400">{error}</p>
+          <p className="text-red-600 dark:text-red-400 text-sm font-mono break-all text-left">{error}</p>
           <button
             onClick={() => window.location.reload()}
             className="mt-4 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600"

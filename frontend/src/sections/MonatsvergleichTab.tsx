@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { MonatsVergleich, VerfuegbareMonate, MonatsKPI } from '../types'
-import { MONATE } from '../constants'
-import { REGION_NAMEN } from '../constants'
+import { MONATE, REGION_NAMEN } from '../constants'
+import { fetchJson } from '../utils'
 
 function KPIBlock({ label, kpi, unit, decimals = 1 }: { label: string; kpi: MonatsKPI; unit: string; decimals?: number }) {
   return (
@@ -38,13 +38,13 @@ export default function MonatsvergleichTab() {
   const [daten, setDaten] = useState<MonatsVergleich | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadingDaten, setLoadingDaten] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [selectedMonat, setSelectedMonat] = useState<string>('')
 
   // Verfügbare Monate laden
   useEffect(() => {
-    fetch('/api/stats/verfuegbare-monate')
-      .then(r => r.json())
-      .then((data: VerfuegbareMonate) => {
+    fetchJson<VerfuegbareMonate>('/api/stats/verfuegbare-monate')
+      .then((data) => {
         setVerfuegbar(data)
         if (data.monate.length > 0) {
           const neuester = data.monate[0]
@@ -52,7 +52,10 @@ export default function MonatsvergleichTab() {
         }
         setLoading(false)
       })
-      .catch(() => setLoading(false))
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : 'Fehler beim Laden')
+        setLoading(false)
+      })
   }, [])
 
   // Monatsdaten laden wenn Auswahl sich ändert
@@ -60,17 +63,15 @@ export default function MonatsvergleichTab() {
     if (!selectedMonat) return
     const [jahr, monat] = selectedMonat.split('-').map(Number)
     setLoadingDaten(true)
-    fetch(`/api/benchmark/monat/${jahr}/${monat}`)
-      .then(r => {
-        if (!r.ok) throw new Error('Keine Daten')
-        return r.json()
-      })
-      .then((data: MonatsVergleich) => {
+    setError(null)
+    fetchJson<MonatsVergleich>(`/api/benchmark/monat/${jahr}/${monat}`)
+      .then((data) => {
         setDaten(data)
         setLoadingDaten(false)
       })
-      .catch(() => {
+      .catch((err) => {
         setDaten(null)
+        setError(err instanceof Error ? err.message : 'Fehler beim Laden')
         setLoadingDaten(false)
       })
   }, [selectedMonat])
@@ -79,6 +80,20 @@ export default function MonatsvergleichTab() {
     return (
       <div className="flex justify-center py-12">
         <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-orange-500"></div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-8 text-center">
+        <p className="text-red-600 dark:text-red-400 text-sm font-mono break-all">{error}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-4 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm"
+        >
+          Erneut versuchen
+        </button>
       </div>
     )
   }

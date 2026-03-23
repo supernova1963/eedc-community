@@ -27,3 +27,38 @@ export function navigateTo(page: 'main' | 'impressum' | 'datenschutz') {
   window.history.pushState({}, '', path)
   window.dispatchEvent(new PopStateEvent('popstate'))
 }
+
+/**
+ * Fetch JSON with detailed error reporting.
+ * Shows status code, content-type and response snippet on failure.
+ */
+export async function fetchJson<T>(url: string): Promise<T> {
+  let res: Response
+  try {
+    res = await fetch(url)
+  } catch (err) {
+    throw new Error(`Netzwerkfehler bei ${url}: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
+  const contentType = res.headers.get('content-type') || 'unbekannt'
+
+  if (!res.ok) {
+    let body = ''
+    try { body = (await res.text()).slice(0, 200) } catch { /* ignore */ }
+    throw new Error(
+      `HTTP ${res.status} bei ${url} (Content-Type: ${contentType})${body ? ` — ${body}` : ''}`
+    )
+  }
+
+  const text = await res.text()
+
+  try {
+    return JSON.parse(text) as T
+  } catch (err) {
+    // Show first 200 chars of the response that failed to parse
+    const snippet = text.slice(0, 200)
+    throw new Error(
+      `JSON-Parse-Fehler bei ${url} (Content-Type: ${contentType}, ${text.length} Bytes): ${snippet}`
+    )
+  }
+}
