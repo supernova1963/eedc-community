@@ -70,8 +70,8 @@ class AnlageSubmitInput(BaseModel):
 
     # Anlagendaten
     region: str = Field(..., min_length=2, max_length=2)  # Bundesland-Kürzel
-    kwp: float = Field(..., gt=0, le=100)  # 0.5 - 100 kWp für Privatanlagen
-    ausrichtung: Literal["süd", "ost", "west", "ost-west", "gemischt"] = "süd"
+    kwp: float = Field(..., gt=0, le=500)  # bis 500 kWp (größere Dachanlagen)
+    ausrichtung: Literal["süd", "süd-ost", "süd-west", "ost", "west", "nord", "nord-ost", "nord-west", "ost-west", "gemischt", "unbekannt"] = "süd"
     neigung_grad: int = Field(..., ge=0, le=90)
     speicher_kwh: float | None = Field(None, ge=0, le=100)
     installation_jahr: int = Field(..., ge=2000, le=2050)
