@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from core import settings, init_db
 from api import submit_router, stats_router, benchmark_router, statistics_router, components_router, trends_router
@@ -33,6 +34,9 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# Proxy-Headers: X-Forwarded-For → request.client.host (hinter Nginx Proxy Manager)
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
 
 # CORS für Frontend
 app.add_middleware(

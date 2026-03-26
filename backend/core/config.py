@@ -24,7 +24,7 @@ class Settings(BaseSettings):
 
     # Rate Limiting
     rate_limit_per_hour: int = 30  # Max Einreichungen pro IP/Stunde
-    max_updates_per_month: int = 12  # Max Updates pro Anlage/Monat
+    max_updates_per_month: int = 30  # Max Updates pro Anlage/Monat
 
     class Config:
         env_file = ".env"
