@@ -23,7 +23,7 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.allowed_origins.split(",")]
 
     # Rate Limiting
-    rate_limit_per_hour: int = 10  # Max Einreichungen pro IP/Stunde
+    rate_limit_per_hour: int = 30  # Max Einreichungen pro IP/Stunde
     max_updates_per_month: int = 12  # Max Updates pro Anlage/Monat
 
     class Config:
