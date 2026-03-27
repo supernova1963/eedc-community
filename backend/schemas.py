@@ -78,6 +78,7 @@ class AnlageSubmitInput(BaseModel):
 
     # Ausstattung
     hat_waermepumpe: bool = False
+    wp_art: Literal["luft_wasser", "sole_wasser", "grundwasser", "luft_luft"] | None = None
     hat_eauto: bool = False
     hat_wallbox: bool = False
     hat_balkonkraftwerk: bool = False
@@ -174,6 +175,7 @@ class AnlageOutput(BaseModel):
     speicher_kwh: float | None
     installation_jahr: int
     hat_waermepumpe: bool
+    wp_art: str | None = None
     hat_eauto: bool
     hat_wallbox: bool
     hat_balkonkraftwerk: bool = False
@@ -228,6 +230,8 @@ class SpeicherBenchmark(BaseModel):
 class WaermepumpeBenchmark(BaseModel):
     """Benchmark-Daten für Wärmepumpe."""
     jaz: KPIVergleich | None = None
+    jaz_typ: KPIVergleich | None = None  # JAZ-Vergleich nur mit gleicher WP-Art
+    wp_art: str | None = None  # luft_wasser, sole_wasser, grundwasser, luft_luft
     stromverbrauch: KPIVergleich | None = None
     waermeerzeugung: KPIVergleich | None = None
     pv_anteil: KPIVergleich | None = None

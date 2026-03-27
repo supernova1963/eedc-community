@@ -33,6 +33,7 @@ class Anlage(Base):
 
     # Ausstattung
     hat_waermepumpe: Mapped[bool] = mapped_column(Boolean, default=False)
+    wp_art: Mapped[str | None] = mapped_column(String(20), nullable=True)  # luft_wasser, sole_wasser, grundwasser, luft_luft
     hat_eauto: Mapped[bool] = mapped_column(Boolean, default=False)
     hat_wallbox: Mapped[bool] = mapped_column(Boolean, default=False)
     hat_balkonkraftwerk: Mapped[bool] = mapped_column(Boolean, default=False)

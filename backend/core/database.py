@@ -30,6 +30,22 @@ async def get_db():
 
 
 async def init_db():
-    """Erstellt alle Tabellen."""
+    """Erstellt alle Tabellen und führt Migrationen aus."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await run_migrations(conn)
+
+
+async def run_migrations(conn):
+    """Führt Schema-Migrationen durch (neue Spalten zu bestehenden Tabellen)."""
+    from sqlalchemy import text, inspect
+
+    def _run(connection):
+        inspector = inspect(connection)
+        if "anlagen" in inspector.get_table_names():
+            existing = {col["name"] for col in inspector.get_columns("anlagen")}
+            # v3.5.x: Wärmepumpenart für fairen JAZ-Vergleich
+            if "wp_art" not in existing:
+                connection.execute(text("ALTER TABLE anlagen ADD COLUMN wp_art VARCHAR(20)"))
+
+    await conn.run_sync(_run)

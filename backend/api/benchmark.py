@@ -221,12 +221,18 @@ async def berechne_eauto_kpis(
     }
 
 
-async def berechne_community_avg_jaz(db: AsyncSession) -> float | None:
-    """Berechnet den Community-Durchschnitt für JAZ."""
-    # Hole alle Anlagen mit WP
-    result = await db.execute(
-        select(Anlage.id).where(Anlage.hat_waermepumpe == True)
-    )
+async def berechne_community_avg_jaz(db: AsyncSession, wp_art: str | None = None) -> float | None:
+    """
+    Berechnet den Community-Durchschnitt für JAZ.
+
+    Args:
+        wp_art: Optional — wenn gesetzt, nur Anlagen mit gleicher WP-Art.
+    """
+    # Hole alle Anlagen mit WP (optional gefiltert nach Art)
+    query = select(Anlage.id).where(Anlage.hat_waermepumpe == True)
+    if wp_art:
+        query = query.where(Anlage.wp_art == wp_art)
+    result = await db.execute(query)
     anlage_ids = [row[0] for row in result.all()]
 
     if not anlage_ids:
@@ -623,11 +629,22 @@ async def get_anlage_benchmark(
         wp_kpis = await berechne_wp_kpis(db, anlage.id, von_jahr, von_monat, bis_jahr, bis_monat)
         if wp_kpis:
             community_jaz = await berechne_community_avg_jaz(db)
+            # Typ-spezifischer JAZ-Vergleich (nur mit gleicher WP-Art)
+            jaz_typ_vergleich = None
+            if anlage.wp_art and wp_kpis.get("jaz"):
+                community_jaz_typ = await berechne_community_avg_jaz(db, wp_art=anlage.wp_art)
+                if community_jaz_typ is not None:
+                    jaz_typ_vergleich = KPIVergleich(
+                        wert=wp_kpis["jaz"],
+                        community_avg=round(community_jaz_typ, 2),
+                    )
             wp_benchmark = WaermepumpeBenchmark(
                 jaz=KPIVergleich(
                     wert=wp_kpis["jaz"],
                     community_avg=round(community_jaz, 2) if community_jaz else None,
                 ) if wp_kpis.get("jaz") else None,
+                jaz_typ=jaz_typ_vergleich,
+                wp_art=anlage.wp_art,
                 stromverbrauch=KPIVergleich(wert=wp_kpis["stromverbrauch"]) if wp_kpis.get("stromverbrauch") else None,
                 waermeerzeugung=KPIVergleich(wert=wp_kpis["waermeerzeugung"]) if wp_kpis.get("waermeerzeugung") else None,
             )

@@ -207,6 +207,7 @@ async def submit_anlage(
         anlage.speicher_kwh = data.speicher_kwh
         anlage.installation_jahr = data.installation_jahr
         anlage.hat_waermepumpe = data.hat_waermepumpe
+        anlage.wp_art = data.wp_art
         anlage.hat_eauto = data.hat_eauto
         anlage.hat_wallbox = data.hat_wallbox
         anlage.hat_balkonkraftwerk = data.hat_balkonkraftwerk
@@ -227,6 +228,7 @@ async def submit_anlage(
             speicher_kwh=data.speicher_kwh,
             installation_jahr=data.installation_jahr,
             hat_waermepumpe=data.hat_waermepumpe,
+            wp_art=data.wp_art,
             hat_eauto=data.hat_eauto,
             hat_wallbox=data.hat_wallbox,
             hat_balkonkraftwerk=data.hat_balkonkraftwerk,

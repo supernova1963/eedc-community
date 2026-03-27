@@ -47,6 +47,19 @@ class WPByRegion(BaseModel):
     regionen: list[WPRegion]
 
 
+class WPArtStats(BaseModel):
+    """Wärmepumpen-Statistiken nach Art."""
+    wp_art: str  # luft_wasser, sole_wasser, grundwasser, luft_luft
+    label: str
+    anzahl: int
+    durchschnitt_jaz: float | None
+
+
+class WPByArt(BaseModel):
+    """Wärmepumpen-JAZ nach Art (Luft-Wasser, Sole-Wasser etc.)."""
+    arten: list[WPArtStats]
+
+
 class EAutoKlasse(BaseModel):
     """E-Auto-Statistiken nach Nutzungsintensität."""
     klasse: str
@@ -218,6 +231,70 @@ async def get_wp_by_region(db: AsyncSession = Depends(get_db)):
         ))
 
     return WPByRegion(regionen=regionen)
+
+
+WP_ART_LABELS = {
+    "luft_wasser": "Luft-Wasser",
+    "sole_wasser": "Sole-Wasser",
+    "grundwasser": "Grundwasser",
+    "luft_luft": "Luft-Luft",
+}
+
+
+@router.get("/waermepumpe/by-art", response_model=WPByArt)
+async def get_wp_by_art(db: AsyncSession = Depends(get_db)):
+    """
+    Liefert Wärmepumpen-JAZ gruppiert nach Wärmepumpenart.
+
+    Ermöglicht fairen Vergleich: Luft-Wasser vs. Sole-Wasser vs. Grundwasser.
+    """
+    arten = []
+
+    for wp_art, label in WP_ART_LABELS.items():
+        # Anlagen mit dieser WP-Art
+        result = await db.execute(
+            select(Anlage)
+            .where(Anlage.hat_waermepumpe == True)
+            .where(Anlage.wp_art == wp_art)
+        )
+        anlagen = result.scalars().all()
+
+        if not anlagen:
+            arten.append(WPArtStats(
+                wp_art=wp_art,
+                label=label,
+                anzahl=0,
+                durchschnitt_jaz=None,
+            ))
+            continue
+
+        jaz_werte = []
+        for anlage in anlagen:
+            result = await db.execute(
+                select(
+                    func.sum(Monatswert.wp_stromverbrauch_kwh),
+                    func.sum(Monatswert.wp_heizwaerme_kwh),
+                    func.sum(Monatswert.wp_warmwasser_kwh),
+                )
+                .where(Monatswert.anlage_id == anlage.id)
+                .where(Monatswert.wp_stromverbrauch_kwh.isnot(None))
+            )
+            row = result.one()
+
+            strom = row[0] or 0
+            waerme = (row[1] or 0) + (row[2] or 0)
+
+            if strom > 0:
+                jaz_werte.append(waerme / strom)
+
+        arten.append(WPArtStats(
+            wp_art=wp_art,
+            label=label,
+            anzahl=len(anlagen),
+            durchschnitt_jaz=round(sum(jaz_werte) / len(jaz_werte), 2) if jaz_werte else None,
+        ))
+
+    return WPByArt(arten=arten)
 
 
 @router.get("/eauto/by-usage", response_model=EAutoByUsage)
