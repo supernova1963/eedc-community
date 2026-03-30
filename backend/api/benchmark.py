@@ -641,7 +641,7 @@ async def get_anlage_benchmark(
             wp_benchmark = WaermepumpeBenchmark(
                 jaz=KPIVergleich(
                     wert=wp_kpis["jaz"],
-                    community_avg=round(community_jaz, 2) if community_jaz else None,
+                    community_avg=community_jaz,
                 ) if wp_kpis.get("jaz") else None,
                 jaz_typ=jaz_typ_vergleich,
                 wp_art=anlage.wp_art,
@@ -731,6 +731,7 @@ async def get_anlage_benchmark(
             wallbox_kw=anlage.wallbox_kw,
             bkw_wp=anlage.bkw_wp,
             sonstiges_bezeichnung=anlage.sonstiges_bezeichnung,
+            wp_art=anlage.wp_art,
             monatswerte=monatswerte_output,
         ),
         "benchmark": BenchmarkData(

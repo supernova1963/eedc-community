@@ -43,6 +43,7 @@ class Anlage(Base):
     wallbox_kw: Mapped[float | None] = mapped_column(Float, nullable=True)  # Ladeleistung
     bkw_wp: Mapped[float | None] = mapped_column(Float, nullable=True)  # BKW Leistung in Wp
     sonstiges_bezeichnung: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    wp_art: Mapped[str | None] = mapped_column(String(20), nullable=True)  # luft_wasser, sole_wasser
 
     # Metadaten
     erstellt_am: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

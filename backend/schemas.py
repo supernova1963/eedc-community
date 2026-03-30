@@ -88,6 +88,7 @@ class AnlageSubmitInput(BaseModel):
     wallbox_kw: float | None = Field(None, ge=0, le=50)  # Ladeleistung in kW
     bkw_wp: float | None = Field(None, ge=0, le=2000)  # BKW Leistung in Wp
     sonstiges_bezeichnung: str | None = Field(None, max_length=100)
+    wp_art: str | None = Field(None, max_length=20)  # luft_wasser, sole_wasser
 
     # Monatswerte
     monatswerte: list[MonatswertInput] = Field(..., min_length=1)
