@@ -37,13 +37,10 @@ export default function CommunityOverview({ stats, totals, isDark, toggleDark }:
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Hero: klappt beim Scrollen weg, öffnet sich wieder per eedc-Klick */}
-      <div className={`overflow-hidden transition-[max-height] duration-500 ease-in-out ${heroCollapsed ? 'max-h-0' : 'max-h-[50vh]'}`}>
+      <div className={`overflow-hidden transition-[max-height] duration-500 ease-in-out ${heroCollapsed ? 'max-h-0' : 'max-h-[38.2vh]'}`}>
         <HeroSection
-          stats={stats}
-          totals={totals}
           isDark={isDark}
           toggleDark={toggleDark}
-          onMitmachen={() => { setActiveTab('mitmachen'); setHeroCollapsed(true) }}
         />
       </div>
 
