@@ -1,8 +1,17 @@
 import type { ReactNode } from 'react'
+import { useMemo } from 'react'
 import type { GesamtStatistik, CommunityGesamtwerte } from '../../types'
+import { MONATE, REGION_NAMEN } from '../../constants'
 import DarkModeToggle from './DarkModeToggle'
 import { useCountUp } from '../../hooks/useCountUp'
 import { useScrolled } from '../../hooks/useScrolled'
+
+function seasonEmoji(monat: number) {
+  if (monat <= 2 || monat === 12) return '❄️'
+  if (monat <= 5) return '🌱'
+  if (monat <= 8) return '☀️'
+  return '🍂'
+}
 
 function StatBox({ icon, label, children }: { icon: string; label: string; children: ReactNode }) {
   return (
@@ -53,6 +62,23 @@ export default function HeroSection({
   const haushalte = totals ? Math.round(totals.pv_erzeugung_kwh / 5000) : 0
   const scrolled = useScrolled(60)
 
+  // Monats-Highlight für kompakten Modus
+  const monthlyHighlight = useMemo(() => {
+    if (stats.letzte_monate.length === 0) return null
+    const sorted = [...stats.letzte_monate].sort((a, b) =>
+      a.jahr !== b.jahr ? a.jahr - b.jahr : a.monat - b.monat
+    )
+    const latest = sorted[sorted.length - 1]
+    const prev = sorted.length > 1 ? sorted[sorted.length - 2] : null
+    const trendPct = prev
+      ? ((latest.durchschnitt_spez_ertrag - prev.durchschnitt_spez_ertrag) / prev.durchschnitt_spez_ertrag) * 100
+      : null
+    const topRegion = stats.regionen.length > 0
+      ? [...stats.regionen].sort((a, b) => b.durchschnitt_spez_ertrag - a.durchschnitt_spez_ertrag)[0]
+      : null
+    return { latest, trendPct, topRegion }
+  }, [stats.letzte_monate, stats.regionen])
+
   return (
     <header className={`relative flex flex-col bg-gradient-to-br from-orange-600 via-orange-500 to-amber-400 text-white overflow-hidden transition-all duration-700 ease-in-out ${scrolled ? 'min-h-[38.2vh]' : 'min-h-[61.8vh]'}`}>
       {/* Decorative sun glows */}
@@ -85,36 +111,73 @@ export default function HeroSection({
             </div>
           </div>
 
-          {/* Unterer Block – Stat-Boxen und CTA */}
-          <div className="flex-1">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
-              <StatBox icon="⚡" label="PV-Anlagen">
-                <IntCounter value={stats.anzahl_anlagen} />
-              </StatBox>
-              <StatBox icon="☀️" label="erzeugte Energie">
-                {totals ? <EnergyCounter kwh={totals.pv_erzeugung_kwh} /> : '–'}
-              </StatBox>
-              <StatBox icon="🌿" label="CO₂ vermieden">
-                {totals ? <CO2Counter kg={totals.co2_vermieden_kg} /> : '–'}
-              </StatBox>
-              <StatBox icon="🏠" label="Haushalte versorgt">
-                {totals ? <IntCounter value={haushalte} /> : '–'}
-              </StatBox>
-            </div>
-
-            <div className="text-center">
-              <p className="text-orange-100 text-sm mb-3">
-                Nutzt du EEDC? Vergleiche deine Anlage anonym mit der Community.
-              </p>
-              <a
-                href="https://github.com/supernova1963/eedc-homeassistant"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block bg-white text-orange-600 font-semibold px-6 py-2.5 rounded-lg hover:bg-orange-50 transition-colors shadow-md"
-              >
-                EEDC Add-on installieren →
-              </a>
-            </div>
+          {/* Unterer Block – Stat-Boxen (groß) oder Monats-Highlights (kompakt) */}
+          <div className="flex-1 flex flex-col justify-center">
+            {!scrolled ? (
+              /* Voller Modus: 4 Stat-Boxen + CTA */
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
+                  <StatBox icon="⚡" label="PV-Anlagen">
+                    <IntCounter value={stats.anzahl_anlagen} />
+                  </StatBox>
+                  <StatBox icon="☀️" label="erzeugte Energie">
+                    {totals ? <EnergyCounter kwh={totals.pv_erzeugung_kwh} /> : '–'}
+                  </StatBox>
+                  <StatBox icon="🌿" label="CO₂ vermieden">
+                    {totals ? <CO2Counter kg={totals.co2_vermieden_kg} /> : '–'}
+                  </StatBox>
+                  <StatBox icon="🏠" label="Haushalte versorgt">
+                    {totals ? <IntCounter value={haushalte} /> : '–'}
+                  </StatBox>
+                </div>
+                <div className="text-center">
+                  <p className="text-orange-100 text-sm mb-3">
+                    Nutzt du EEDC? Vergleiche deine Anlage anonym mit der Community.
+                  </p>
+                  <a
+                    href="https://github.com/supernova1963/eedc-homeassistant"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block bg-white text-orange-600 font-semibold px-6 py-2.5 rounded-lg hover:bg-orange-50 transition-colors shadow-md"
+                  >
+                    EEDC Add-on installieren →
+                  </a>
+                </div>
+              </>
+            ) : (
+              /* Kompakter Modus: Monats-Highlights als Pills */
+              monthlyHighlight ? (
+                <div className="flex flex-wrap justify-center gap-2 md:gap-3 py-2">
+                  {/* Monat */}
+                  <div className="bg-white/15 backdrop-blur-sm border border-white/20 rounded-full px-4 py-1.5 flex items-center gap-2 text-sm font-medium">
+                    <span>{seasonEmoji(monthlyHighlight.latest.monat)}</span>
+                    <span>{MONATE[monthlyHighlight.latest.monat - 1]} {monthlyHighlight.latest.jahr}</span>
+                  </div>
+                  {/* Ertrag */}
+                  <div className="bg-white/15 backdrop-blur-sm border border-white/20 rounded-full px-4 py-1.5 text-sm font-medium">
+                    Ø {monthlyHighlight.latest.durchschnitt_spez_ertrag.toFixed(1)} kWh/kWp
+                  </div>
+                  {/* Trend */}
+                  {monthlyHighlight.trendPct !== null && (
+                    <div className="bg-white/15 backdrop-blur-sm border border-white/20 rounded-full px-4 py-1.5 text-sm font-medium">
+                      {monthlyHighlight.trendPct >= 0 ? '▲' : '▼'}{' '}
+                      {Math.abs(monthlyHighlight.trendPct).toFixed(0)}% vs. Vormonat
+                    </div>
+                  )}
+                  {/* Top Region */}
+                  {monthlyHighlight.topRegion && (
+                    <div className="bg-white/15 backdrop-blur-sm border border-white/20 rounded-full px-4 py-1.5 text-sm font-medium">
+                      🏆 {REGION_NAMEN[monthlyHighlight.topRegion.region] || monthlyHighlight.topRegion.region}{' '}
+                      <span className="text-orange-100">({monthlyHighlight.topRegion.durchschnitt_spez_ertrag.toFixed(0)} kWh/kWp)</span>
+                    </div>
+                  )}
+                  {/* Anlagen */}
+                  <div className="bg-white/15 backdrop-blur-sm border border-white/20 rounded-full px-4 py-1.5 text-sm font-medium">
+                    ⚡ {monthlyHighlight.latest.anzahl_anlagen} Anlagen
+                  </div>
+                </div>
+              ) : null
+            )}
           </div>
 
         </div>

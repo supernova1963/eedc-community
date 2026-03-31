@@ -22,10 +22,11 @@ export default function CommunityOverview({ stats, totals, isDark, toggleDark }:
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <HeroSection stats={stats} totals={totals} isDark={isDark} toggleDark={toggleDark} />
-
-      {/* Tabs */}
-      <TabNavigation activeTab={activeTab} onChange={setActiveTab} />
+      {/* Sticky: Hero + Tabs kleben gemeinsam oben */}
+      <div className="sticky top-0 z-20">
+        <HeroSection stats={stats} totals={totals} isDark={isDark} toggleDark={toggleDark} />
+        <TabNavigation activeTab={activeTab} onChange={setActiveTab} />
+      </div>
 
       <main className="max-w-6xl mx-auto px-4 py-8">
         {/* Monatlicher Highlight-Banner – immer sichtbar oben */}
