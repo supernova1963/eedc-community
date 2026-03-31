@@ -11,8 +11,8 @@ import CommunityHighlights from '../sections/CommunityHighlights'
 import CommunityImpact from '../sections/CommunityImpact'
 import AusstattungsVerteilung from '../sections/AusstattungsVerteilung'
 import GroessenVerteilung from '../sections/GroessenVerteilung'
-import RegionenRanking from '../sections/RegionenRanking'
 import MonatsverlaufChart from '../components/charts/MonatsverlaufChart'
+import GermanyHeatmap from '../components/charts/GermanyHeatmap'
 import MonatsvergleichTab from '../sections/MonatsvergleichTab'
 
 export default function CommunityOverview({ stats, totals, isDark, toggleDark }: { stats: GesamtStatistik; totals: CommunityGesamtwerte | null; isDark: boolean; toggleDark: () => void }) {
@@ -93,10 +93,10 @@ export default function CommunityOverview({ stats, totals, isDark, toggleDark }:
         {/* Tab: Regionen */}
         {activeTab === 'regionen' && (
           <div className="space-y-8">
-            <FadeIn from="left">
-              <RegionenRanking regionen={stats.regionen} />
+            <FadeIn>
+              <GermanyHeatmap regionen={stats.regionen} />
             </FadeIn>
-            <FadeIn delay={100}>
+            <FadeIn delay={150}>
               <MonatsverlaufChart monate={stats.letzte_monate} />
             </FadeIn>
           </div>
