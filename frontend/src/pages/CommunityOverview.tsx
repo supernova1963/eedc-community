@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react'
 import type { GesamtStatistik, CommunityGesamtwerte, TabId } from '../types'
 import HeroSection from '../components/layout/HeroSection'
-import StickyBar from '../components/layout/StickyBar'
+import StickyHeader from '../components/layout/StickyHeader'
 import FadeIn from '../components/layout/FadeIn'
 import Footer from '../components/layout/Footer'
-import TabNavigation from '../components/layout/TabNavigation'
 import KPICard from '../components/cards/KPICard'
 import TrendChart from '../components/charts/TrendChart'
 import TopPerformer from '../sections/TopPerformer'
@@ -39,14 +38,23 @@ export default function CommunityOverview({ stats, totals, isDark, toggleDark }:
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Hero: klappt beim Scrollen weg, öffnet sich wieder per eedc-Klick */}
       <div className={`overflow-hidden transition-[max-height] duration-500 ease-in-out ${heroCollapsed ? 'max-h-0' : 'max-h-[50vh]'}`}>
-        <HeroSection stats={stats} totals={totals} isDark={isDark} toggleDark={toggleDark} />
+        <HeroSection
+          stats={stats}
+          totals={totals}
+          isDark={isDark}
+          toggleDark={toggleDark}
+          onMitmachen={() => { setActiveTab('mitmachen'); setHeroCollapsed(true) }}
+        />
       </div>
 
-      {/* Sticky: orangene Bar + Tabs */}
-      <div className="sticky top-0 z-20">
-        <StickyBar monate={stats.letzte_monate} regionen={stats.regionen} onHomeClick={showHero} />
-        <TabNavigation activeTab={activeTab} onChange={setActiveTab} />
-      </div>
+      {/* Sticky Header: Bar + Tabs (Desktop) / Bar + Hamburger (Mobile) */}
+      <StickyHeader
+        stats={stats}
+        totals={totals}
+        activeTab={activeTab}
+        onChange={setActiveTab}
+        onHomeClick={showHero}
+      />
 
       <main className="max-w-6xl mx-auto px-4 py-8">
 
