@@ -20,7 +20,15 @@ export default function StickyBar({
 }) {
   const monthly = useMemo(() => {
     if (monate.length === 0) return null
-    const sorted = [...monate].sort((a, b) =>
+    // Nur abgeschlossene Monate berücksichtigen (nicht den laufenden Monat)
+    const now = new Date()
+    const abgeschlossen = monate.filter(m =>
+      m.jahr < now.getFullYear() ||
+      (m.jahr === now.getFullYear() && m.monat < now.getMonth() + 1)
+    )
+    // Fallback auf alle Daten wenn noch keine abgeschlossenen vorhanden
+    const basis = abgeschlossen.length > 0 ? abgeschlossen : monate
+    const sorted = [...basis].sort((a, b) =>
       a.jahr !== b.jahr ? a.jahr - b.jahr : a.monat - b.monat,
     )
     const latest = sorted[sorted.length - 1]
