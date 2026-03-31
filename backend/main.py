@@ -89,7 +89,10 @@ if assets_path.exists() and index_path.exists():
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        """SPA-Fallback: alle unbekannten Routen → index.html."""
+        """Statische Dateien aus static/ direkt liefern, sonst SPA-Fallback."""
+        requested = static_path / full_path
+        if requested.exists() and requested.is_file():
+            return FileResponse(requested)
         return FileResponse(index_path)
 else:
     @app.get("/")
