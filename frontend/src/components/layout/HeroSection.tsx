@@ -84,7 +84,7 @@ export default function HeroSection({
   }, [stats.letzte_monate, stats.regionen])
 
   return (
-    <header className="relative min-h-[61.8vh] flex flex-col bg-gradient-to-br from-orange-600 via-orange-500 to-amber-400 text-white overflow-hidden">
+    <header className="relative min-h-[38.2vh] flex flex-col bg-gradient-to-br from-orange-600 via-orange-500 to-amber-400 text-white overflow-hidden">
       {/* Dekorative Sonnen-Glows */}
       <div className="absolute -top-24 -right-24 w-96 h-96 bg-amber-300 rounded-full blur-3xl opacity-20 pointer-events-none" />
       <div className="absolute -bottom-12 -left-12 w-56 h-56 bg-orange-700 rounded-full blur-3xl opacity-20 pointer-events-none" />
