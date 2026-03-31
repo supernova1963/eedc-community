@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { GesamtStatistik, CommunityGesamtwerte, TabId } from '../types'
 import HeroSection from '../components/layout/HeroSection'
+import FadeIn from '../components/layout/FadeIn'
 import Footer from '../components/layout/Footer'
 import TabNavigation from '../components/layout/TabNavigation'
 import KPICard from '../components/cards/KPICard'
@@ -28,63 +29,84 @@ export default function CommunityOverview({ stats, totals, isDark, toggleDark }:
         {/* Tab: Übersicht */}
         {activeTab === 'uebersicht' && (
           <div className="space-y-8">
-            {/* KPIs */}
+            {/* KPIs – gestaffelt von links/rechts/unten */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <KPICard
-                title="Ø Jahresertrag"
-                value={Math.round(stats.durchschnitt_spez_ertrag_jahr)}
-                unit="kWh/kWp"
-                subtitle="Community-Durchschnitt"
-              />
-              <KPICard
-                title="Ø Anlagengröße"
-                value={stats.durchschnitt_kwp.toFixed(1)}
-                unit="kWp"
-              />
-              <KPICard
-                title="Ø Speicher"
-                value={stats.durchschnitt_speicher_kwh?.toFixed(1) || '-'}
-                unit="kWh"
-                subtitle="bei Anlagen mit Speicher"
-              />
+              <FadeIn delay={0} from="left">
+                <KPICard
+                  title="Ø Jahresertrag"
+                  value={Math.round(stats.durchschnitt_spez_ertrag_jahr)}
+                  unit="kWh/kWp"
+                  subtitle="Community-Durchschnitt"
+                />
+              </FadeIn>
+              <FadeIn delay={100}>
+                <KPICard
+                  title="Ø Anlagengröße"
+                  value={stats.durchschnitt_kwp.toFixed(1)}
+                  unit="kWp"
+                />
+              </FadeIn>
+              <FadeIn delay={200} from="right">
+                <KPICard
+                  title="Ø Speicher"
+                  value={stats.durchschnitt_speicher_kwh?.toFixed(1) || '-'}
+                  unit="kWh"
+                  subtitle="bei Anlagen mit Speicher"
+                />
+              </FadeIn>
             </div>
 
             {/* Highlights */}
-            <CommunityHighlights stats={stats} />
+            <FadeIn>
+              <CommunityHighlights stats={stats} />
+            </FadeIn>
 
             {/* Trend und Top-Performer */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
+              <FadeIn delay={0} from="left" className="lg:col-span-2">
                 <TrendChart monate={stats.letzte_monate} />
-              </div>
-              <TopPerformer regionen={stats.regionen} />
+              </FadeIn>
+              <FadeIn delay={150} from="right">
+                <TopPerformer regionen={stats.regionen} />
+              </FadeIn>
             </div>
 
             {/* Ausstattung und Größen */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <AusstattungsVerteilung stats={stats} />
-              <GroessenVerteilung stats={stats} />
+              <FadeIn delay={0} from="left">
+                <AusstattungsVerteilung stats={stats} />
+              </FadeIn>
+              <FadeIn delay={150} from="right">
+                <GroessenVerteilung stats={stats} />
+              </FadeIn>
             </div>
-
           </div>
         )}
 
         {/* Tab: Monatsvergleich */}
         {activeTab === 'monatsvergleich' && (
-          <MonatsvergleichTab />
+          <FadeIn>
+            <MonatsvergleichTab />
+          </FadeIn>
         )}
 
         {/* Tab: Regionen */}
         {activeTab === 'regionen' && (
           <div className="space-y-8">
-            <RegionenRanking regionen={stats.regionen} />
-            <MonatsverlaufChart monate={stats.letzte_monate} />
+            <FadeIn from="left">
+              <RegionenRanking regionen={stats.regionen} />
+            </FadeIn>
+            <FadeIn delay={100}>
+              <MonatsverlaufChart monate={stats.letzte_monate} />
+            </FadeIn>
           </div>
         )}
 
         {/* Tab: Impact */}
         {activeTab === 'impact' && totals && (
-          <CommunityImpact totals={totals} />
+          <FadeIn>
+            <CommunityImpact totals={totals} />
+          </FadeIn>
         )}
         {activeTab === 'impact' && !totals && (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-8 text-center">
