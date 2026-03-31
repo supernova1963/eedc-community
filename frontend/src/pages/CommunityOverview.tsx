@@ -14,7 +14,6 @@ import GroessenVerteilung from '../sections/GroessenVerteilung'
 import MonatsverlaufChart from '../components/charts/MonatsverlaufChart'
 import GermanyHeatmap from '../components/charts/GermanyHeatmap'
 import MonatsvergleichTab from '../sections/MonatsvergleichTab'
-import MonthlyHighlightBanner from '../sections/MonthlyHighlightBanner'
 import MitmachenTab from '../sections/MitmachenTab'
 
 export default function CommunityOverview({ stats, totals, isDark, toggleDark }: { stats: GesamtStatistik; totals: CommunityGesamtwerte | null; isDark: boolean; toggleDark: () => void }) {
@@ -22,21 +21,12 @@ export default function CommunityOverview({ stats, totals, isDark, toggleDark }:
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Sticky: Hero + Tabs kleben gemeinsam oben */}
-      <div className="sticky top-0 z-20">
-        <HeroSection stats={stats} totals={totals} isDark={isDark} toggleDark={toggleDark} />
-        <TabNavigation activeTab={activeTab} onChange={setActiveTab} />
-      </div>
+      {/* Hero scrollt normal weg */}
+      <HeroSection stats={stats} totals={totals} isDark={isDark} toggleDark={toggleDark} />
+      {/* TabNavigation klebt selbst sticky (inkl. EEDC-Brand wenn Hero weg) */}
+      <TabNavigation activeTab={activeTab} onChange={setActiveTab} />
 
       <main className="max-w-6xl mx-auto px-4 py-8">
-        {/* Monatlicher Highlight-Banner – immer sichtbar oben */}
-        {stats.letzte_monate.length > 0 && (
-          <div className="mb-8">
-            <FadeIn>
-              <MonthlyHighlightBanner monate={stats.letzte_monate} regionen={stats.regionen} />
-            </FadeIn>
-          </div>
-        )}
 
         {/* Tab: Übersicht */}
         {activeTab === 'uebersicht' && (
