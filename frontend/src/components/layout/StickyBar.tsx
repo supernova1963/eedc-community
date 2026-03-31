@@ -36,37 +36,37 @@ export default function StickyBar({
   }, [monate, regionen])
 
   return (
-    <div className="bg-orange-500 text-white px-4 py-2 flex items-center gap-3 min-h-[44px]">
-      {/* Brand-Button: Hero wieder aufklappen + nach oben scrollen */}
+    <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-2 flex items-center gap-3 min-h-[44px]">
+      {/* Brand-Button */}
       <button
         type="button"
         onClick={onHomeClick}
-        className="flex items-center gap-1.5 font-bold text-white hover:text-orange-100 transition-colors shrink-0"
+        className="flex items-center gap-1.5 font-bold text-orange-600 dark:text-orange-400 hover:text-orange-500 transition-colors shrink-0"
         aria-label="Hero einblenden"
       >
         ☀️ <span className="text-base">eedc</span>
       </button>
 
       {/* Trennlinie */}
-      <div className="w-px h-5 bg-white/30 shrink-0" />
+      <div className="w-px h-5 bg-gray-200 dark:bg-gray-600 shrink-0" />
 
-      {/* Monats-Pills – horizontal scrollbar auf Mobile, kein Wrap */}
+      {/* Monats-Pills */}
       {monthly && (
         <div className="flex items-center gap-2 overflow-x-auto scrollbar-none min-w-0">
-          <span className="inline-flex items-center gap-1 bg-white/15 border border-white/20 rounded-full px-3 py-0.5 text-xs font-medium whitespace-nowrap">
+          <span className="inline-flex items-center gap-1 bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300 rounded-full px-3 py-0.5 text-xs font-medium whitespace-nowrap">
             {seasonEmoji(monthly.latest.monat)}{' '}
             {MONATE[monthly.latest.monat - 1]} {monthly.latest.jahr}
           </span>
-          <span className="inline-flex items-center bg-white/15 border border-white/20 rounded-full px-3 py-0.5 text-xs font-medium whitespace-nowrap">
+          <span className="inline-flex items-center bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300 rounded-full px-3 py-0.5 text-xs font-medium whitespace-nowrap">
             Ø {monthly.latest.durchschnitt_spez_ertrag.toFixed(1)} kWh/kWp
           </span>
           {monthly.trendPct !== null && (
-            <span className="inline-flex items-center bg-white/15 border border-white/20 rounded-full px-3 py-0.5 text-xs font-medium whitespace-nowrap">
+            <span className="inline-flex items-center bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300 rounded-full px-3 py-0.5 text-xs font-medium whitespace-nowrap">
               {monthly.trendPct >= 0 ? '▲' : '▼'} {Math.abs(monthly.trendPct).toFixed(0)}%
             </span>
           )}
           {monthly.topRegion && (
-            <span className="inline-flex items-center bg-white/15 border border-white/20 rounded-full px-3 py-0.5 text-xs font-medium whitespace-nowrap">
+            <span className="inline-flex items-center bg-orange-50 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300 rounded-full px-3 py-0.5 text-xs font-medium whitespace-nowrap">
               🏆 {REGION_NAMEN[monthly.topRegion.region] || monthly.topRegion.region}
             </span>
           )}
