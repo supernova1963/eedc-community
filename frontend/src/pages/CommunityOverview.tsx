@@ -14,6 +14,7 @@ import GroessenVerteilung from '../sections/GroessenVerteilung'
 import MonatsverlaufChart from '../components/charts/MonatsverlaufChart'
 import GermanyHeatmap from '../components/charts/GermanyHeatmap'
 import MonatsvergleichTab from '../sections/MonatsvergleichTab'
+import MonthlyHighlightBanner from '../sections/MonthlyHighlightBanner'
 
 export default function CommunityOverview({ stats, totals, isDark, toggleDark }: { stats: GesamtStatistik; totals: CommunityGesamtwerte | null; isDark: boolean; toggleDark: () => void }) {
   const [activeTab, setActiveTab] = useState<TabId>('uebersicht')
@@ -26,6 +27,15 @@ export default function CommunityOverview({ stats, totals, isDark, toggleDark }:
       <TabNavigation activeTab={activeTab} onChange={setActiveTab} />
 
       <main className="max-w-6xl mx-auto px-4 py-8">
+        {/* Monatlicher Highlight-Banner – immer sichtbar oben */}
+        {stats.letzte_monate.length > 0 && (
+          <div className="mb-8">
+            <FadeIn>
+              <MonthlyHighlightBanner monate={stats.letzte_monate} regionen={stats.regionen} />
+            </FadeIn>
+          </div>
+        )}
+
         {/* Tab: Übersicht */}
         {activeTab === 'uebersicht' && (
           <div className="space-y-8">
