@@ -81,6 +81,16 @@ if assets_path.exists() and index_path.exists():
     async def serve_favicon():
         """Liefert das Favicon."""
         return FileResponse(static_path / "favicon.svg")
+
+    @app.get("/deutschland-bundeslaender.geo.json")
+    async def serve_geojson():
+        """Liefert die Deutschland-Bundesländer GeoJSON-Karte."""
+        return FileResponse(static_path / "deutschland-bundeslaender.geo.json", media_type="application/json")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """SPA-Fallback: alle unbekannten Routen → index.html."""
+        return FileResponse(index_path)
 else:
     @app.get("/")
     async def redirect_to_docs():
