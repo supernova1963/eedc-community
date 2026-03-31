@@ -34,15 +34,16 @@ export default function StickyBar({
   }, [monate, regionen])
 
   return (
-    <div className="bg-gradient-to-r from-orange-600 to-amber-500 text-white px-4 py-2 flex items-center gap-3 min-h-[44px]">
-      {/* Brand-Link nach Home */}
-      <a
-        href="/"
+    <div className="bg-gradient-to-br from-orange-600 via-orange-500 to-amber-400 text-white px-4 py-2 flex items-center gap-3 min-h-[44px]">
+      {/* Brand-Button: scrollt zurück nach oben → Hero erscheint wieder */}
+      <button
+        type="button"
+        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
         className="flex items-center gap-1.5 font-bold text-white hover:text-orange-100 transition-colors shrink-0"
-        aria-label="EEDC Community – Startseite"
+        aria-label="Nach oben scrollen"
       >
         ☀️ <span className="text-base">eedc</span>
-      </a>
+      </button>
 
       {/* Trennlinie */}
       <div className="w-px h-5 bg-white/30 shrink-0" />
