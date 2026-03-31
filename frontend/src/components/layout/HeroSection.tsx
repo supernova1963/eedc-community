@@ -131,7 +131,7 @@ export default function HeroSection({
         )}
 
         {/* Stat-Boxen – unterer goldener Block */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
           <StatBox icon="⚡" label="PV-Anlagen">
             <IntCounter value={stats.anzahl_anlagen} />
           </StatBox>
@@ -144,6 +144,21 @@ export default function HeroSection({
           <StatBox icon="🏠" label="Haushalte versorgt">
             {totals ? <IntCounter value={haushalte} /> : '–'}
           </StatBox>
+        </div>
+
+        {/* CTA */}
+        <div className="text-center">
+          <p className="text-orange-100 text-sm mb-3">
+            Nutzt du EEDC? Vergleiche deine Anlage anonym mit der Community.
+          </p>
+          <a
+            href="https://github.com/supernova1963/eedc-homeassistant"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block bg-white text-orange-600 font-semibold px-6 py-2.5 rounded-lg hover:bg-orange-50 transition-colors shadow-md"
+          >
+            EEDC Add-on installieren →
+          </a>
         </div>
       </div>
     </header>
