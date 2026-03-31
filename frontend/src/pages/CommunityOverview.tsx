@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { GesamtStatistik, CommunityGesamtwerte, TabId } from '../types'
 import HeroSection from '../components/layout/HeroSection'
+import StickyBar from '../components/layout/StickyBar'
 import FadeIn from '../components/layout/FadeIn'
 import Footer from '../components/layout/Footer'
 import TabNavigation from '../components/layout/TabNavigation'
@@ -23,8 +24,12 @@ export default function CommunityOverview({ stats, totals, isDark, toggleDark }:
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Hero scrollt normal weg */}
       <HeroSection stats={stats} totals={totals} isDark={isDark} toggleDark={toggleDark} />
-      {/* TabNavigation klebt selbst sticky (inkl. EEDC-Brand wenn Hero weg) */}
-      <TabNavigation activeTab={activeTab} onChange={setActiveTab} />
+
+      {/* Sticky: orangene Bar + Tabs kleben gemeinsam */}
+      <div className="sticky top-0 z-20">
+        <StickyBar monate={stats.letzte_monate} regionen={stats.regionen} />
+        <TabNavigation activeTab={activeTab} onChange={setActiveTab} />
+      </div>
 
       <main className="max-w-6xl mx-auto px-4 py-8">
 
