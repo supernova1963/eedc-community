@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { GesamtStatistik, CommunityGesamtwerte, TabId } from '../types'
 import HeroSection from '../components/layout/HeroSection'
 import StickyBar from '../components/layout/StickyBar'
@@ -19,15 +19,32 @@ import MitmachenTab from '../sections/MitmachenTab'
 
 export default function CommunityOverview({ stats, totals, isDark, toggleDark }: { stats: GesamtStatistik; totals: CommunityGesamtwerte | null; isDark: boolean; toggleDark: () => void }) {
   const [activeTab, setActiveTab] = useState<TabId>('uebersicht')
+  const [heroCollapsed, setHeroCollapsed] = useState(false)
+
+  // Beim ersten Scrollen Hero automatisch einklappen
+  useEffect(() => {
+    const onScroll = () => {
+      if (window.scrollY > 10) setHeroCollapsed(true)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  const showHero = () => {
+    setHeroCollapsed(false)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Hero scrollt normal weg */}
-      <HeroSection stats={stats} totals={totals} isDark={isDark} toggleDark={toggleDark} />
+      {/* Hero: klappt beim Scrollen weg, öffnet sich wieder per eedc-Klick */}
+      <div className={`overflow-hidden transition-[max-height] duration-500 ease-in-out ${heroCollapsed ? 'max-h-0' : 'max-h-[50vh]'}`}>
+        <HeroSection stats={stats} totals={totals} isDark={isDark} toggleDark={toggleDark} />
+      </div>
 
-      {/* Sticky: orangene Bar + Tabs kleben gemeinsam */}
+      {/* Sticky: orangene Bar + Tabs */}
       <div className="sticky top-0 z-20">
-        <StickyBar monate={stats.letzte_monate} regionen={stats.regionen} />
+        <StickyBar monate={stats.letzte_monate} regionen={stats.regionen} onHomeClick={showHero} />
         <TabNavigation activeTab={activeTab} onChange={setActiveTab} />
       </div>
 

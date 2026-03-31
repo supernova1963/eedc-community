@@ -12,9 +12,11 @@ function seasonEmoji(monat: number) {
 export default function StickyBar({
   monate,
   regionen,
+  onHomeClick,
 }: {
   monate: MonatsStatistik[]
   regionen: RegionStatistik[]
+  onHomeClick?: () => void
 }) {
   const monthly = useMemo(() => {
     if (monate.length === 0) return null
@@ -34,13 +36,13 @@ export default function StickyBar({
   }, [monate, regionen])
 
   return (
-    <div className="bg-gradient-to-br from-orange-600 via-orange-500 to-amber-400 text-white px-4 py-2 flex items-center gap-3 min-h-[44px]">
-      {/* Brand-Button: scrollt zurück nach oben → Hero erscheint wieder */}
+    <div className="bg-orange-500 text-white px-4 py-2 flex items-center gap-3 min-h-[44px]">
+      {/* Brand-Button: Hero wieder aufklappen + nach oben scrollen */}
       <button
         type="button"
-        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        onClick={onHomeClick}
         className="flex items-center gap-1.5 font-bold text-white hover:text-orange-100 transition-colors shrink-0"
-        aria-label="Nach oben scrollen"
+        aria-label="Hero einblenden"
       >
         ☀️ <span className="text-base">eedc</span>
       </button>
