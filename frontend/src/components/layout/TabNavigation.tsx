@@ -5,6 +5,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'monatsvergleich', label: 'Monatsvergleich' },
   { id: 'regionen', label: 'Regionen' },
   { id: 'impact', label: 'Impact' },
+  { id: 'mitmachen', label: '🚀 Mitmachen' },
 ]
 
 export default function TabNavigation({

@@ -15,6 +15,7 @@ import MonatsverlaufChart from '../components/charts/MonatsverlaufChart'
 import GermanyHeatmap from '../components/charts/GermanyHeatmap'
 import MonatsvergleichTab from '../sections/MonatsvergleichTab'
 import MonthlyHighlightBanner from '../sections/MonthlyHighlightBanner'
+import MitmachenTab from '../sections/MitmachenTab'
 
 export default function CommunityOverview({ stats, totals, isDark, toggleDark }: { stats: GesamtStatistik; totals: CommunityGesamtwerte | null; isDark: boolean; toggleDark: () => void }) {
   const [activeTab, setActiveTab] = useState<TabId>('uebersicht')
@@ -123,6 +124,9 @@ export default function CommunityOverview({ stats, totals, isDark, toggleDark }:
             <p className="text-gray-500 dark:text-gray-400">Impact-Daten werden geladen...</p>
           </div>
         )}
+
+        {/* Tab: Mitmachen */}
+        {activeTab === 'mitmachen' && <MitmachenTab />}
 
         {/* Footer */}
         <Footer />

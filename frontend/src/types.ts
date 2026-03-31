@@ -227,7 +227,7 @@ export interface VerfuegbareMonate {
   neuester: string | null
 }
 
-export type TabId = 'uebersicht' | 'monatsvergleich' | 'regionen' | 'impact'
+export type TabId = 'uebersicht' | 'monatsvergleich' | 'regionen' | 'impact' | 'mitmachen'
 
 export interface CommunityGesamtwerte {
   anzahl_anlagen: number
