@@ -66,6 +66,13 @@ def validate_monatswerte_plausibility(data: AnlageSubmitInput) -> list[str]:
                 detail=f"Zukunftsmonat nicht erlaubt: {mw.jahr}-{mw.monat:02d}"
             )
 
+        # Kein 0-Ertrag erlaubt
+        if mw.ertrag_kwh <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Ertrag 0 oder negativ in {mw.jahr}-{mw.monat:02d} nicht erlaubt"
+            )
+
         # Spezifischer Ertrag pro kWp
         spez_ertrag = mw.ertrag_kwh / data.kwp
 
