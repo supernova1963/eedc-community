@@ -17,6 +17,7 @@ export const REGION_NAMEN: Record<string, string> = {
   TH: 'Thüringen',
   AT: 'Österreich',
   CH: 'Schweiz',
+  IT: 'Italien',
 }
 
 export const MONATE = [

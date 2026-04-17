@@ -47,8 +47,12 @@ export default function MonatsvergleichTab() {
       .then((data) => {
         setVerfuegbar(data)
         if (data.monate.length > 0) {
-          const neuester = data.monate[0]
-          setSelectedMonat(`${neuester.jahr}-${neuester.monat}`)
+          // Letzter vollständiger Monat (nicht aktueller Monat)
+          const jetzt = new Date()
+          const aktJahr = jetzt.getFullYear()
+          const aktMonat = jetzt.getMonth() + 1
+          const standard = data.monate.find(m => !(m.jahr === aktJahr && m.monat === aktMonat)) || data.monate[0]
+          setSelectedMonat(`${standard.jahr}-${standard.monat}`)
         }
         setLoading(false)
       })

@@ -24,10 +24,7 @@ export default function MonatsverlaufChart({ monate }: { monate: MonatsStatistik
           <XAxis dataKey="name" tick={{ fill: '#9ca3af' }} />
           <YAxis domain={[0, 'auto']} tick={{ fill: '#9ca3af' }} />
           <Tooltip
-            formatter={(value: number, name: string) => [
-              `${value.toFixed(1)} kWh/kWp`,
-              name === 'durchschnitt' ? 'Ø Ertrag' : name === 'max' ? 'Maximum' : 'Minimum'
-            ]}
+            formatter={(value: number) => [`${value.toFixed(1)} kWh/kWp`]}
             contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }}
             labelStyle={{ color: '#f3f4f6' }}
           />

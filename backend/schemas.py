@@ -99,7 +99,7 @@ class AnlageSubmitInput(BaseModel):
         valid_regions = {
             "BW", "BY", "BE", "BB", "HB", "HH", "HE", "MV",
             "NI", "NW", "RP", "SL", "SN", "ST", "SH", "TH",
-            "AT", "CH"  # Österreich, Schweiz
+            "AT", "CH", "IT"  # Österreich, Schweiz, Italien
         }
         v = v.upper()
         if v not in valid_regions:

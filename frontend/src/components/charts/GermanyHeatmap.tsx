@@ -5,6 +5,11 @@ import { REGION_NAMEN } from '../../constants'
 
 const GEO_URL = '/deutschland-bundeslaender.geo.json'
 
+const DE_CODES = new Set([
+  'BW', 'BY', 'BE', 'BB', 'HB', 'HH', 'HE', 'MV',
+  'NI', 'NW', 'RP', 'SL', 'SN', 'ST', 'SH', 'TH',
+])
+
 function interpolateColor(value: number, min: number, max: number): string {
   if (max === min) return '#fbbf24'
   const t = Math.max(0, Math.min(1, (value - min) / (max - min)))
@@ -31,10 +36,14 @@ export default function GermanyHeatmap({ regionen }: { regionen: RegionStatistik
     return m
   }, [regionen])
 
+  const deRegionen = useMemo(() => regionen.filter(r => DE_CODES.has(r.region)), [regionen])
+  const auslandRegionen = useMemo(() => regionen.filter(r => !DE_CODES.has(r.region)), [regionen])
+
   const { min, max } = useMemo(() => {
-    const vals = regionen.map(r => r.durchschnitt_spez_ertrag).filter(v => v > 0)
+    const vals = deRegionen.map(r => r.durchschnitt_spez_ertrag).filter(v => v > 0)
+    if (vals.length === 0) return { min: 0, max: 0 }
     return { min: Math.min(...vals), max: Math.max(...vals) }
-  }, [regionen])
+  }, [deRegionen])
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
@@ -96,10 +105,10 @@ export default function GermanyHeatmap({ regionen }: { regionen: RegionStatistik
 
         {/* Rangliste */}
         <div className="w-full lg:w-1/2 space-y-2">
-          {[...regionen]
+          {[...deRegionen]
             .sort((a, b) => b.durchschnitt_spez_ertrag - a.durchschnitt_spez_ertrag)
             .map((r, idx) => {
-              const width = ((r.durchschnitt_spez_ertrag - min) / (max - min)) * 100
+              const width = max > min ? ((r.durchschnitt_spez_ertrag - min) / (max - min)) * 100 : 50
               return (
                 <div key={r.region} className="flex items-center gap-2">
                   <span className="text-xs text-gray-400 w-5 text-right shrink-0">#{idx + 1}</span>
@@ -129,6 +138,32 @@ export default function GermanyHeatmap({ regionen }: { regionen: RegionStatistik
           <p className="text-xs text-gray-400 dark:text-gray-500 text-right pt-1">kWh/kWp</p>
         </div>
       </div>
+
+      {/* Ausland */}
+      {auslandRegionen.length > 0 && (
+        <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <h4 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+            Ausland
+          </h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[...auslandRegionen]
+              .sort((a, b) => b.durchschnitt_spez_ertrag - a.durchschnitt_spez_ertrag)
+              .map(r => (
+                <div key={r.region} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 rounded-lg px-4 py-2">
+                  <div>
+                    <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
+                      {REGION_NAMEN[r.region] || r.region}
+                    </span>
+                    <p className="text-xs text-gray-400">{r.anzahl_anlagen} Anlage{r.anzahl_anlagen !== 1 ? 'n' : ''}</p>
+                  </div>
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                    {r.durchschnitt_spez_ertrag.toFixed(0)} kWh/kWp
+                  </span>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
 
       {/* Tooltip (fixed position) */}
       {tooltip && (
