@@ -178,28 +178,42 @@ async def submit_anlage(
     - Neue Anlage: Wird erstellt mit generiertem Hash
     - Bestehende Anlage (gleicher Hash): Monatswerte werden ergänzt/aktualisiert
     """
-    # Rate Limiting
-    client_ip = request.client.host if request.client else "unknown"
-    if not await check_rate_limit(db, client_ip):
-        raise HTTPException(
-            status_code=429,
-            detail="Zu viele Anfragen. Bitte warte eine Stunde."
-        )
-
-    # Plausibilität prüfen
-    warnings = validate_monatswerte_plausibility(data)
-
     # Hash generieren falls nicht angegeben
     anlage_hash = data.anlage_hash or generate_anlage_hash(data)
 
-    # Bestehende Anlage suchen
+    # Bestehende Anlage suchen — vor dem IP-Limit, damit authentifizierte
+    # Updates (mit Client-mitgeliefertem Hash) das IP-Limit umgehen können.
     result = await db.execute(
         select(Anlage).where(Anlage.anlage_hash == anlage_hash)
     )
     anlage = result.scalar_one_or_none()
 
+    # IP-Rate-Limit greift nur für Neuanlagen bzw. Submits ohne Client-Hash
+    # (Sybil-Schutz gegen Spam neuer Anlagen). Updates mit gültigem, vom
+    # Client mitgeschicktem Hash sind über das Per-Anlage-Limit
+    # (update_count, monatlich resettend) abgesichert. Hintergrund: alle
+    # Submits aus EEDC-Add-ons treffen den Server hinter NPM mit derselben
+    # Bridge-IP — ohne diese Ausnahme blockieren sich die Tester gegenseitig.
+    client_ip = request.client.host if request.client else "unknown"
+    if not (anlage and data.anlage_hash):
+        if not await check_rate_limit(db, client_ip):
+            raise HTTPException(
+                status_code=429,
+                detail="Zu viele Anfragen. Bitte warte eine Stunde."
+            )
+
+    # Plausibilität prüfen
+    warnings = validate_monatswerte_plausibility(data)
+
     if anlage:
-        # Update: Prüfen ob zu viele Updates
+        # Update: Zähler bei Monatswechsel zurücksetzen, dann Limit prüfen.
+        # aktualisiert_am trägt zum Zeitpunkt des Checks noch den Wert der
+        # vorherigen Aktualisierung (onupdate greift erst beim nächsten Flush).
+        now = datetime.utcnow()
+        last_updated = anlage.aktualisiert_am
+        if last_updated and (last_updated.year, last_updated.month) != (now.year, now.month):
+            anlage.update_count = 0
+
         if anlage.update_count >= settings.max_updates_per_month:
             raise HTTPException(
                 status_code=429,
