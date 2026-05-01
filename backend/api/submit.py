@@ -3,6 +3,7 @@ EEDC Community - Daten einreichen
 """
 
 import hashlib
+import logging
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select, func, delete
@@ -12,6 +13,7 @@ from core import settings, get_db
 from models import Anlage, Monatswert, RateLimit
 from schemas import AnlageSubmitInput, SubmitResponse, BenchmarkData, DeleteResponse
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/submit", tags=["Einreichen"])
 
 
@@ -197,6 +199,10 @@ async def submit_anlage(
     client_ip = request.client.host if request.client else "unknown"
     if not (anlage and data.anlage_hash):
         if not await check_rate_limit(db, client_ip):
+            logger.warning(
+                "submit 429 IP-Limit ip=%s hash=%s anlage_existiert=%s",
+                client_ip, anlage_hash[:12], bool(anlage),
+            )
             raise HTTPException(
                 status_code=429,
                 detail="Zu viele Anfragen. Bitte warte eine Stunde."
@@ -215,6 +221,10 @@ async def submit_anlage(
             anlage.update_count = 0
 
         if anlage.update_count >= settings.max_updates_per_month:
+            logger.warning(
+                "submit 429 Anlagen-Limit hash=%s update_count=%s",
+                anlage_hash[:12], anlage.update_count,
+            )
             raise HTTPException(
                 status_code=429,
                 detail="Maximale Anzahl Updates pro Monat erreicht."
