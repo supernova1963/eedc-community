@@ -183,30 +183,11 @@ async def submit_anlage(
     # Hash generieren falls nicht angegeben
     anlage_hash = data.anlage_hash or generate_anlage_hash(data)
 
-    # Bestehende Anlage suchen — vor dem IP-Limit, damit authentifizierte
-    # Updates (mit Client-mitgeliefertem Hash) das IP-Limit umgehen können.
+    # Bestehende Anlage suchen
     result = await db.execute(
         select(Anlage).where(Anlage.anlage_hash == anlage_hash)
     )
     anlage = result.scalar_one_or_none()
-
-    # IP-Rate-Limit greift nur für Neuanlagen bzw. Submits ohne Client-Hash
-    # (Sybil-Schutz gegen Spam neuer Anlagen). Updates mit gültigem, vom
-    # Client mitgeschicktem Hash sind über das Per-Anlage-Limit
-    # (update_count, monatlich resettend) abgesichert. Hintergrund: alle
-    # Submits aus EEDC-Add-ons treffen den Server hinter NPM mit derselben
-    # Bridge-IP — ohne diese Ausnahme blockieren sich die Tester gegenseitig.
-    client_ip = request.client.host if request.client else "unknown"
-    if not (anlage and data.anlage_hash):
-        if not await check_rate_limit(db, client_ip):
-            logger.warning(
-                "submit 429 IP-Limit ip=%s hash=%s anlage_existiert=%s",
-                client_ip, anlage_hash[:12], bool(anlage),
-            )
-            raise HTTPException(
-                status_code=429,
-                detail="Zu viele Anfragen. Bitte warte eine Stunde."
-            )
 
     # Plausibilität prüfen
     warnings = validate_monatswerte_plausibility(data)
@@ -352,9 +333,6 @@ async def submit_anlage(
                 # Sonstiges
                 sonstiges_verbrauch_kwh=mw.sonstiges_verbrauch_kwh,
             ))
-
-    # Request für Rate-Limiting speichern
-    await record_request(db, client_ip)
 
     await db.commit()
     await db.refresh(anlage)
