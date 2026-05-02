@@ -472,9 +472,15 @@ async def berechne_region_durchschnitt(db: AsyncSession, region: str) -> float:
 
 async def berechne_rang_und_anzahl(
     db: AsyncSession, anlage_id: int, region: str
-) -> tuple[int, int, int, int]:
-    """Liefert (rang_gesamt, anzahl_gesamt, rang_region, anzahl_region)
-    auf Basis des spez. Jahresertrags. SoT für Submit + Dashboard."""
+) -> tuple[int, int, int, int, int, int]:
+    """Liefert (rang_gesamt, anzahl_gesamt, anzahl_mit_daten,
+                rang_region, anzahl_region, anzahl_region_mit_daten).
+
+    `anzahl_*` zählt alle Anlagen in der DB (für Submit-Confirmation).
+    `anzahl_*_mit_daten` zählt nur Anlagen mit spez_ertrag > 0
+    (für Dashboard-Anzeige 'von N'). Beide Konzepte werden parallel benötigt
+    (Original-Inkonsistenz Submit vs. Dashboard, bewusst beibehalten).
+    """
     anzahl_result = await db.execute(select(func.count(Anlage.id)))
     anzahl_gesamt = anzahl_result.scalar() or 1
 
@@ -507,7 +513,8 @@ async def berechne_rang_und_anzahl(
         1,
     )
 
-    return rang_gesamt, anzahl_gesamt, rang_region, anzahl_region
+    return (rang_gesamt, anzahl_gesamt, len(ertraege_alle),
+            rang_region, anzahl_region, len(ertraege_region))
 
 
 @router.get("/anlage/{anlage_hash}")
@@ -560,7 +567,8 @@ async def get_anlage_benchmark(
     spez_ertrag_region = await berechne_region_durchschnitt(db, anlage.region)
 
     # Rang + Anzahl (SoT-Helper, identisch zur Submit-Confirmation)
-    rang_gesamt, anzahl_gesamt, rang_region, anzahl_region = await berechne_rang_und_anzahl(
+    (rang_gesamt, anzahl_gesamt, anzahl_mit_daten,
+     rang_region, anzahl_region, anzahl_region_mit_daten) = await berechne_rang_und_anzahl(
         db, anlage.id, anlage.region
     )
 
@@ -608,7 +616,7 @@ async def get_anlage_benchmark(
             wert=round(spez_ertrag_anlage, 1),
             community_avg=round(spez_ertrag_durchschnitt, 1),
             rang=rang_gesamt,
-            von=len(ertraege_alle),
+            von=anzahl_mit_daten,
         ),
     )
 
@@ -743,9 +751,9 @@ async def get_anlage_benchmark(
             spez_ertrag_durchschnitt=round(spez_ertrag_durchschnitt, 1),
             spez_ertrag_region=round(spez_ertrag_region, 1),
             rang_gesamt=rang_gesamt,
-            anzahl_anlagen_gesamt=len(ertraege_alle),
+            anzahl_anlagen_gesamt=anzahl_mit_daten,
             rang_region=rang_region,
-            anzahl_anlagen_region=len(ertraege_region),
+            anzahl_anlagen_region=anzahl_region_mit_daten,
         ),
         "benchmark_erweitert": erweiterte_benchmarks,
         "zeitraum": zeitraum,

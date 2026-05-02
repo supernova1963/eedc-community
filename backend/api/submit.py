@@ -112,7 +112,8 @@ async def calculate_benchmark(db: AsyncSession, anlage: Anlage) -> BenchmarkData
 
     spez_ertrag_durchschnitt = await berechne_community_durchschnitt(db)
     spez_ertrag_region = await berechne_region_durchschnitt(db, anlage.region)
-    rang_gesamt, anzahl_gesamt, rang_region, anzahl_region = await berechne_rang_und_anzahl(
+    (rang_gesamt, anzahl_gesamt, _,
+     rang_region, anzahl_region, _) = await berechne_rang_und_anzahl(
         db, anlage.id, anlage.region
     )
 
