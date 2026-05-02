@@ -470,6 +470,46 @@ async def berechne_region_durchschnitt(db: AsyncSession, region: str) -> float:
     return sum(jahresertraege) / len(jahresertraege) if jahresertraege else 0
 
 
+async def berechne_rang_und_anzahl(
+    db: AsyncSession, anlage_id: int, region: str
+) -> tuple[int, int, int, int]:
+    """Liefert (rang_gesamt, anzahl_gesamt, rang_region, anzahl_region)
+    auf Basis des spez. Jahresertrags. SoT für Submit + Dashboard."""
+    anzahl_result = await db.execute(select(func.count(Anlage.id)))
+    anzahl_gesamt = anzahl_result.scalar() or 1
+
+    region_result = await db.execute(
+        select(func.count(Anlage.id)).where(Anlage.region == region)
+    )
+    anzahl_region = region_result.scalar() or 1
+
+    alle_result = await db.execute(select(Anlage))
+    alle = alle_result.scalars().all()
+
+    ertraege_alle: list[tuple[int, float]] = []
+    ertraege_region: list[tuple[int, float]] = []
+    for a in alle:
+        spez = await berechne_spez_jahresertrag(db, a.id, a.kwp)
+        if spez > 0:
+            ertraege_alle.append((a.id, spez))
+            if a.region == region:
+                ertraege_region.append((a.id, spez))
+
+    ertraege_alle.sort(key=lambda x: x[1], reverse=True)
+    ertraege_region.sort(key=lambda x: x[1], reverse=True)
+
+    rang_gesamt = next(
+        (i + 1 for i, (aid, _) in enumerate(ertraege_alle) if aid == anlage_id),
+        1,
+    )
+    rang_region = next(
+        (i + 1 for i, (aid, _) in enumerate(ertraege_region) if aid == anlage_id),
+        1,
+    )
+
+    return rang_gesamt, anzahl_gesamt, rang_region, anzahl_region
+
+
 @router.get("/anlage/{anlage_hash}")
 async def get_anlage_benchmark(
     anlage_hash: str,
@@ -519,46 +559,10 @@ async def get_anlage_benchmark(
     # Regions-Durchschnitt
     spez_ertrag_region = await berechne_region_durchschnitt(db, anlage.region)
 
-    # Anzahl Anlagen
-    result = await db.execute(select(func.count(Anlage.id)))
-    anzahl_gesamt = result.scalar() or 1
-
-    result = await db.execute(
-        select(func.count(Anlage.id)).where(Anlage.region == anlage.region)
+    # Rang + Anzahl (SoT-Helper, identisch zur Submit-Confirmation)
+    rang_gesamt, anzahl_gesamt, rang_region, anzahl_region = await berechne_rang_und_anzahl(
+        db, anlage.id, anlage.region
     )
-    anzahl_region = result.scalar() or 1
-
-    # Rang berechnen - basierend auf spez. Jahresertrag
-    # Hole alle Anlagen mit ihrem spez. Ertrag
-    alle_anlagen = await db.execute(select(Anlage))
-    alle = alle_anlagen.scalars().all()
-
-    ertraege_alle = []
-    ertraege_region = []
-
-    for a in alle:
-        spez = await berechne_spez_jahresertrag(db, a.id, a.kwp)
-        if spez > 0:
-            ertraege_alle.append((a.id, spez))
-            if a.region == anlage.region:
-                ertraege_region.append((a.id, spez))
-
-    # Sortieren (höchster Ertrag zuerst)
-    ertraege_alle.sort(key=lambda x: x[1], reverse=True)
-    ertraege_region.sort(key=lambda x: x[1], reverse=True)
-
-    # Rang finden
-    rang_gesamt = 1
-    for i, (aid, _) in enumerate(ertraege_alle):
-        if aid == anlage.id:
-            rang_gesamt = i + 1
-            break
-
-    rang_region = 1
-    for i, (aid, _) in enumerate(ertraege_region):
-        if aid == anlage.id:
-            rang_region = i + 1
-            break
 
     # Monatswerte mit spez. Ertrag anreichern
     monatswerte_output = [

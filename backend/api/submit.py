@@ -93,77 +93,36 @@ def validate_monatswerte_plausibility(data: AnlageSubmitInput) -> list[str]:
 
 
 async def calculate_benchmark(db: AsyncSession, anlage: Anlage) -> BenchmarkData | None:
-    """Berechnet Vergleichsdaten für eine Anlage."""
-    # Aktuelles Jahr oder letztes vollständiges Jahr
-    current_year = datetime.utcnow().year
-    target_year = current_year if datetime.utcnow().month > 6 else current_year - 1
+    """Berechnet Vergleichsdaten für eine Anlage.
 
-    # Spez. Ertrag der Anlage im Zieljahr
-    result = await db.execute(
-        select(func.sum(Monatswert.ertrag_kwh))
-        .where(Monatswert.anlage_id == anlage.id)
-        .where(Monatswert.jahr == target_year)
+    Nutzt dieselben SoT-Helper wie das Dashboard (`/api/benchmark/anlage/...`),
+    damit Submit-Confirmation und Dashboard konsistent rechnen (rollende letzte
+    12 Monate, Mittelwert über pro-Anlage spez. Jahreserträge, echter Rang).
+    """
+    from .benchmark import (
+        berechne_spez_jahresertrag,
+        berechne_community_durchschnitt,
+        berechne_region_durchschnitt,
+        berechne_rang_und_anzahl,
     )
-    anlage_ertrag = result.scalar() or 0
-    spez_ertrag_anlage = anlage_ertrag / anlage.kwp if anlage.kwp > 0 else 0
 
-    if spez_ertrag_anlage == 0:
+    spez_ertrag_anlage = await berechne_spez_jahresertrag(db, anlage.id, anlage.kwp)
+    if spez_ertrag_anlage <= 0:
         return None
 
-    # Durchschnitt aller Anlagen
-    result = await db.execute(
-        select(
-            func.sum(Monatswert.ertrag_kwh),
-            func.sum(Anlage.kwp)
-        )
-        .join(Anlage)
-        .where(Monatswert.jahr == target_year)
+    spez_ertrag_durchschnitt = await berechne_community_durchschnitt(db)
+    spez_ertrag_region = await berechne_region_durchschnitt(db, anlage.region)
+    rang_gesamt, anzahl_gesamt, rang_region, anzahl_region = await berechne_rang_und_anzahl(
+        db, anlage.id, anlage.region
     )
-    row = result.first()
-    gesamt_ertrag = row[0] or 0
-    gesamt_kwp = row[1] or 1
-    spez_ertrag_durchschnitt = gesamt_ertrag / gesamt_kwp
-
-    # Durchschnitt der Region
-    result = await db.execute(
-        select(
-            func.sum(Monatswert.ertrag_kwh),
-            func.sum(Anlage.kwp)
-        )
-        .join(Anlage)
-        .where(Monatswert.jahr == target_year)
-        .where(Anlage.region == anlage.region)
-    )
-    row = result.first()
-    region_ertrag = row[0] or 0
-    region_kwp = row[1] or 1
-    spez_ertrag_region = region_ertrag / region_kwp
-
-    # Rang gesamt (Anlagen mit höherem spez. Ertrag)
-    # Vereinfachte Berechnung - in Produktion optimieren
-    result = await db.execute(select(func.count(Anlage.id)))
-    anzahl_gesamt = result.scalar() or 1
-
-    result = await db.execute(
-        select(func.count(Anlage.id)).where(Anlage.region == anlage.region)
-    )
-    anzahl_region = result.scalar() or 1
-
-    # Platzierung basierend auf Perzentil (vereinfacht)
-    if spez_ertrag_anlage >= spez_ertrag_durchschnitt:
-        rang_gesamt = int(anzahl_gesamt * 0.3)  # Top 30%
-    else:
-        rang_gesamt = int(anzahl_gesamt * 0.6)  # Untere 60%
-
-    rang_region = int(rang_gesamt * anzahl_region / anzahl_gesamt)
 
     return BenchmarkData(
         spez_ertrag_anlage=round(spez_ertrag_anlage, 1),
         spez_ertrag_durchschnitt=round(spez_ertrag_durchschnitt, 1),
         spez_ertrag_region=round(spez_ertrag_region, 1),
-        rang_gesamt=max(1, rang_gesamt),
+        rang_gesamt=rang_gesamt,
         anzahl_anlagen_gesamt=anzahl_gesamt,
-        rang_region=max(1, rang_region),
+        rang_region=rang_region,
         anzahl_anlagen_region=anzahl_region,
     )
 
