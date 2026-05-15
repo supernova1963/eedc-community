@@ -47,5 +47,14 @@ async def run_migrations(conn):
             # v3.5.x: Wärmepumpenart für fairen JAZ-Vergleich
             if "wp_art" not in existing:
                 connection.execute(text("ALTER TABLE anlagen ADD COLUMN wp_art VARCHAR(20)"))
+            # v3.30.2 (Issue #254): Rate-Limit-Fenster rollend 24h statt
+            # Monatswechsel. Bestehende Anlagen starten mit NULL — beim
+            # nächsten Submit beginnt ein frisches 24h-Fenster, der alte
+            # Monatszähler wird ignoriert. Damit sind alle Anlagen, die am
+            # Monats-Limit hingen, nach Deploy automatisch entsperrt.
+            if "update_window_start" not in existing:
+                connection.execute(text(
+                    "ALTER TABLE anlagen ADD COLUMN update_window_start TIMESTAMP"
+                ))
 
     await conn.run_sync(_run)

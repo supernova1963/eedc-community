@@ -153,22 +153,28 @@ async def submit_anlage(
     warnings = validate_monatswerte_plausibility(data)
 
     if anlage:
-        # Update: Zähler bei Monatswechsel zurücksetzen, dann Limit prüfen.
-        # aktualisiert_am trägt zum Zeitpunkt des Checks noch den Wert der
-        # vorherigen Aktualisierung (onupdate greift erst beim nächsten Flush).
+        # Update: Rate-Limit-Fenster rollend 24h prüfen. Wenn das letzte Fenster
+        # leer (Neuanlage / Migration aus Monatszähler-Logik) oder älter als 24h
+        # ist, frisches Fenster starten. Damit sind Reparatur-/Nachpflege-
+        # Sessions möglich, ohne den Spam-Schutz pro Hash aufzugeben.
+        # Issue #254 (kingcap1).
         now = datetime.utcnow()
-        last_updated = anlage.aktualisiert_am
-        if last_updated and (last_updated.year, last_updated.month) != (now.year, now.month):
+        window_start = anlage.update_window_start
+        if window_start is None or (now - window_start) > timedelta(hours=24):
+            anlage.update_window_start = now
             anlage.update_count = 0
 
-        if anlage.update_count >= settings.max_updates_per_month:
+        if anlage.update_count >= settings.max_updates_per_24h:
             logger.warning(
-                "submit 429 Anlagen-Limit hash=%s update_count=%s",
-                anlage_hash[:12], anlage.update_count,
+                "submit 429 Anlagen-Limit hash=%s update_count=%s window_start=%s",
+                anlage_hash[:12], anlage.update_count, anlage.update_window_start,
             )
             raise HTTPException(
                 status_code=429,
-                detail="Maximale Anzahl Updates pro Monat erreicht."
+                detail=(
+                    f"Maximale Anzahl Updates ({settings.max_updates_per_24h}) "
+                    f"im 24-Stunden-Fenster erreicht. Bitte später erneut versuchen."
+                ),
             )
 
         # Anlagendaten aktualisieren (alle Felder, nicht nur Komponenten)

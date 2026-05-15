@@ -48,7 +48,12 @@ class Anlage(Base):
     # Metadaten
     erstellt_am: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     aktualisiert_am: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # Rate-Limit-Fenster (rollend 24h, statt Monatswechsel). Beim ersten
+    # Submit oder wenn das Fenster älter als 24h ist, wird `update_window_start`
+    # neu gesetzt und `update_count` auf 0. Sonst zählt jeder Submit hoch und
+    # 429 greift bei settings.max_updates_per_24h. Issue #254 (kingcap1).
     update_count: Mapped[int] = mapped_column(Integer, default=0)
+    update_window_start: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Beziehungen
     monatswerte: Mapped[list["Monatswert"]] = relationship(back_populates="anlage", cascade="all, delete-orphan")

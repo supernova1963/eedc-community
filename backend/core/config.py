@@ -23,8 +23,12 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.allowed_origins.split(",")]
 
     # Rate Limiting
-    rate_limit_per_hour: int = 30  # Max Einreichungen pro IP/Stunde
-    max_updates_per_month: int = 30  # Max Updates pro Anlage/Monat
+    rate_limit_per_hour: int = 30  # Max DELETE-Anfragen pro IP/Stunde
+    # Max Updates pro Anlage in einem rollenden 24-Stunden-Fenster.
+    # 30 reichten bei Reparatur-/Nachpflege-Sessions schnell nicht (Issue #254
+    # kingcap1: Datenpflege 2023→2026 in einer Session). 50 ist Schmerz-Hebel-
+    # tolerant, bleibt Spam-Schutz pro Hash.
+    max_updates_per_24h: int = 50
 
     class Config:
         env_file = ".env"
