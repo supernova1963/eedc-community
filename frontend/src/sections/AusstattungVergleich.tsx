@@ -9,9 +9,11 @@ export default function AusstattungVergleich({ anlage, stats }: { anlage: Anlage
   const avgWallbox = stats.regionen.reduce((sum, r) => sum + r.anteil_mit_wallbox * r.anzahl_anlagen, 0) / totalAnlagen
   const avgBKW = stats.regionen.reduce((sum, r) => sum + r.anteil_mit_balkonkraftwerk * r.anzahl_anlagen, 0) / totalAnlagen
 
-  // Speicher: kWh-Vergleich wenn Anlage Speicher hat, sonst %-Vergleich
-  const speicherCommunity = anlage.speicher_kwh && stats.durchschnitt_speicher_kwh
-    ? `${stats.durchschnitt_speicher_kwh.toFixed(1)} kWh`
+  // Speicher: kWh-Vergleich wenn Anlage Speicher hat (Median > Avg, robust gegen Outlier),
+  // sonst %-Vergleich (Ausstattungsquote).
+  const speicherMedian = stats.speicher_stats?.median_kwh ?? stats.durchschnitt_speicher_kwh
+  const speicherCommunity = anlage.speicher_kwh && speicherMedian
+    ? `${speicherMedian.toFixed(1)} kWh (Speicher-Anlagen)`
     : `${Math.round(avgSpeicher)}% haben`
 
   const items = [

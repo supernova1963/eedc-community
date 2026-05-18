@@ -22,11 +22,21 @@ export interface MonatsStatistik {
   max_spez_ertrag: number
 }
 
+export interface SpeicherStatistik {
+  anzahl_anlagen_mit_speicher: number
+  durchschnitt_kwh: number | null
+  median_kwh: number | null
+  p25_kwh: number | null
+  p75_kwh: number | null
+  durchschnitt_kwh_pro_kwp: number | null
+}
+
 export interface GesamtStatistik {
   anzahl_anlagen: number
   anzahl_monatswerte: number
   durchschnitt_kwp: number
   durchschnitt_speicher_kwh: number | null
+  speicher_stats: SpeicherStatistik | null
   durchschnitt_spez_ertrag_jahr: number
   regionen: RegionStatistik[]
   letzte_monate: MonatsStatistik[]

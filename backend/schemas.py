@@ -324,12 +324,27 @@ class MonatsStatistik(BaseModel):
     max_spez_ertrag: float
 
 
+class SpeicherStatistik(BaseModel):
+    """Speicher-Kennzahlen über die Anlagen mit `speicher_kwh > 0`.
+
+    Mehrere KPIs nebeneinander, damit der reine Mittelwert nicht als
+    "Ø über alle Anlagen" missverstanden wird (siehe Rainer-PN 2026-05-18).
+    """
+    anzahl_anlagen_mit_speicher: int
+    durchschnitt_kwh: float | None
+    median_kwh: float | None
+    p25_kwh: float | None
+    p75_kwh: float | None
+    durchschnitt_kwh_pro_kwp: float | None
+
+
 class GesamtStatistik(BaseModel):
     """Gesamtübersicht aller Daten."""
     anzahl_anlagen: int
     anzahl_monatswerte: int
     durchschnitt_kwp: float
-    durchschnitt_speicher_kwh: float | None
+    durchschnitt_speicher_kwh: float | None  # bestehend, = SpeicherStatistik.durchschnitt_kwh
+    speicher_stats: SpeicherStatistik | None = None  # Median + IQR + kWh/kWp-Anker
     durchschnitt_spez_ertrag_jahr: float
     regionen: list[RegionStatistik]
     letzte_monate: list[MonatsStatistik]

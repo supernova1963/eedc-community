@@ -59,7 +59,7 @@ export default function CommunityOverview({ stats, totals, isDark, toggleDark }:
         {activeTab === 'uebersicht' && (
           <div className="space-y-8">
             {/* KPIs – gestaffelt von links/rechts/unten */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <FadeIn delay={0} from="left">
                 <KPICard
                   title="Ø Jahresertrag"
@@ -75,12 +75,33 @@ export default function CommunityOverview({ stats, totals, isDark, toggleDark }:
                   unit="kWp"
                 />
               </FadeIn>
-              <FadeIn delay={200} from="right">
+              <FadeIn delay={200}>
                 <KPICard
-                  title="Ø Speicher"
-                  value={stats.durchschnitt_speicher_kwh?.toFixed(1) || '-'}
+                  title="Median Speicher"
+                  value={
+                    stats.speicher_stats?.median_kwh?.toFixed(1)
+                    ?? stats.durchschnitt_speicher_kwh?.toFixed(1)
+                    ?? '-'
+                  }
                   unit="kWh"
-                  subtitle="bei Anlagen mit Speicher"
+                  subtitle={(() => {
+                    const s = stats.speicher_stats
+                    if (!s || s.anzahl_anlagen_mit_speicher === 0) return 'bei Anlagen mit Speicher'
+                    const n = s.anzahl_anlagen_mit_speicher
+                    const ges = stats.anzahl_anlagen
+                    const spanne = (s.p25_kwh !== null && s.p75_kwh !== null)
+                      ? ` — typisch ${s.p25_kwh.toFixed(1)}–${s.p75_kwh.toFixed(1)} kWh`
+                      : ''
+                    return `${n} von ${ges} Anlagen${spanne}`
+                  })()}
+                />
+              </FadeIn>
+              <FadeIn delay={300} from="right">
+                <KPICard
+                  title="Ø Speicher/kWp"
+                  value={stats.speicher_stats?.durchschnitt_kwh_pro_kwp?.toFixed(2) ?? '-'}
+                  unit="kWh/kWp"
+                  subtitle="Plausibilitäts-Anker (typisch 0,8–1,5)"
                 />
               </FadeIn>
             </div>

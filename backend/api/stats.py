@@ -9,7 +9,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import get_db
 from models import Anlage, Monatswert
-from schemas import GesamtStatistik, RegionStatistik, MonatsStatistik, VerfuegbareMonate, VerfuegbarerMonat
+from schemas import (
+    GesamtStatistik,
+    MonatsStatistik,
+    RegionStatistik,
+    SpeicherStatistik,
+    VerfuegbareMonate,
+    VerfuegbarerMonat,
+)
+from .aggregations import compute_speicher_stats
 
 router = APIRouter(prefix="/stats", tags=["Statistiken"])
 
@@ -29,6 +37,7 @@ async def get_statistiken(db: AsyncSession = Depends(get_db)):
             anzahl_monatswerte=0,
             durchschnitt_kwp=0,
             durchschnitt_speicher_kwh=None,
+            speicher_stats=None,
             durchschnitt_spez_ertrag_jahr=0,
             regionen=[],
             letzte_monate=[],
@@ -42,13 +51,19 @@ async def get_statistiken(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(func.avg(Anlage.kwp)))
     durchschnitt_kwp = result.scalar() or 0
 
-    # Durchschnitt Speicher (nur Anlagen mit Speicher)
-    result = await db.execute(
-        select(func.avg(Anlage.speicher_kwh))
-        .where(Anlage.speicher_kwh.isnot(None))
-        .where(Anlage.speicher_kwh > 0)
+    # Speicher-Statistik (SoT-Helper: avg + median + IQR + kWh/kWp)
+    speicher = await compute_speicher_stats(db)
+
+    speicher_schema = SpeicherStatistik(
+        anzahl_anlagen_mit_speicher=speicher.n_mit_speicher,
+        durchschnitt_kwh=round(speicher.avg_kwh, 1) if speicher.avg_kwh is not None else None,
+        median_kwh=round(speicher.median_kwh, 1) if speicher.median_kwh is not None else None,
+        p25_kwh=round(speicher.p25_kwh, 1) if speicher.p25_kwh is not None else None,
+        p75_kwh=round(speicher.p75_kwh, 1) if speicher.p75_kwh is not None else None,
+        durchschnitt_kwh_pro_kwp=(
+            round(speicher.avg_kwh_pro_kwp, 2) if speicher.avg_kwh_pro_kwp is not None else None
+        ),
     )
-    durchschnitt_speicher_kwh = result.scalar()
 
     # Durchschnittlicher spez. Jahresertrag
     # Berechnung: Für jede Anlage die letzten 12 Monate summieren, dann Durchschnitt
@@ -64,7 +79,8 @@ async def get_statistiken(db: AsyncSession = Depends(get_db)):
         anzahl_anlagen=anzahl_anlagen,
         anzahl_monatswerte=anzahl_monatswerte,
         durchschnitt_kwp=round(durchschnitt_kwp, 1),
-        durchschnitt_speicher_kwh=round(durchschnitt_speicher_kwh, 1) if durchschnitt_speicher_kwh else None,
+        durchschnitt_speicher_kwh=speicher_schema.durchschnitt_kwh,
+        speicher_stats=speicher_schema,
         durchschnitt_spez_ertrag_jahr=round(durchschnitt_spez_ertrag_jahr, 0),
         regionen=regionen,
         letzte_monate=letzte_monate,

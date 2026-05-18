@@ -27,6 +27,7 @@ from schemas import (
     CommunityGesamtwerte,
     MonatsSumme,
 )
+from .aggregations import compute_speicher_stats
 
 router = APIRouter(prefix="/statistics", tags=["Erweiterte Statistiken"])
 
@@ -69,15 +70,12 @@ async def get_global_statistics(db: AsyncSession = Depends(get_db)):
     anzahl_regionen = result.scalar() or 0
 
     # Durchschnittswerte
-    result = await db.execute(
-        select(
-            func.avg(Anlage.kwp).label("avg_kwp"),
-            func.avg(case((Anlage.speicher_kwh > 0, Anlage.speicher_kwh))).label("avg_speicher"),
-        )
-    )
-    row = result.one()
-    avg_kwp = row.avg_kwp or 0
-    avg_speicher = row.avg_speicher
+    result = await db.execute(select(func.avg(Anlage.kwp)))
+    avg_kwp = result.scalar() or 0
+
+    # Speicher-Statistik (SoT-Helper: avg + median + IQR + kWh/kWp)
+    speicher = await compute_speicher_stats(db)
+    avg_speicher = speicher.avg_kwh
 
     # Durchschnittlicher spez. Ertrag (Jahresertrag)
     spez_ertrag = await berechne_community_jahresertrag(db)
@@ -142,6 +140,21 @@ async def get_global_statistics(db: AsyncSession = Depends(get_db)):
             "kwp": round(avg_kwp, 1),
             "spez_ertrag": round(spez_ertrag, 0),
             "speicher_kwh": round(avg_speicher, 1) if avg_speicher else None,
+            "speicher_median_kwh": (
+                round(speicher.median_kwh, 1) if speicher.median_kwh is not None else None
+            ),
+            "speicher_p25_kwh": (
+                round(speicher.p25_kwh, 1) if speicher.p25_kwh is not None else None
+            ),
+            "speicher_p75_kwh": (
+                round(speicher.p75_kwh, 1) if speicher.p75_kwh is not None else None
+            ),
+            "speicher_kwh_pro_kwp": (
+                round(speicher.avg_kwh_pro_kwp, 2)
+                if speicher.avg_kwh_pro_kwp is not None
+                else None
+            ),
+            "anzahl_anlagen_mit_speicher": speicher.n_mit_speicher,
             "autarkie_prozent": round(avg_autarkie, 1) if avg_autarkie else None,
             "eigenverbrauch_prozent": round(avg_eigenverbrauch, 1) if avg_eigenverbrauch else None,
         },
