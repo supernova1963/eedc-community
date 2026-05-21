@@ -18,6 +18,7 @@ export const REGION_NAMEN: Record<string, string> = {
   AT: 'Österreich',
   CH: 'Schweiz',
   IT: 'Italien',
+  XX: 'International / unbekannt',
 }
 
 export const MONATE = [
