@@ -148,9 +148,15 @@ async def get_trends(
         stmt = select(
             func.count(func.distinct(Anlage.anlage_hash)).label("anzahl"),
             func.avg(Anlage.kwp).label("avg_kwp"),
-            func.sum(case((Anlage.speicher_kwh > 0, 1), else_=0)).label("mit_speicher"),
-            func.sum(case((Anlage.hat_waermepumpe == True, 1), else_=0)).label("mit_wp"),
-            func.sum(case((Anlage.hat_eauto == True, 1), else_=0)).label("mit_eauto"),
+            # #312 FMainz: pro Anlage zählen, nicht pro Monatswert-Zeile.
+            # Der JOIN auf Monatswert liefert eine Zeile je (Anlage, Monat);
+            # ein SUM(CASE) zählte eine Anlage so ~Ø-Monate-fach → Quote = mit_x
+            # / anzahl × 100 war um diesen Faktor (~20×) zu hoch (Anteile bis
+            # ~2026 %). count(DISTINCT anlage_hash) hält dieselbe Basis wie
+            # `anzahl` (count DISTINCT anlage_hash) → Quote echt 0–100 %.
+            func.count(func.distinct(case((Anlage.speicher_kwh > 0, Anlage.anlage_hash)))).label("mit_speicher"),
+            func.count(func.distinct(case((Anlage.hat_waermepumpe == True, Anlage.anlage_hash)))).label("mit_wp"),
+            func.count(func.distinct(case((Anlage.hat_eauto == True, Anlage.anlage_hash)))).label("mit_eauto"),
         ).select_from(Monatswert).join(
             Anlage, Monatswert.anlage_id == Anlage.id
         ).where(
