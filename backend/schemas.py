@@ -93,6 +93,12 @@ class AnlageSubmitInput(BaseModel):
     # Monatswerte
     monatswerte: list[MonatswertInput] = Field(..., min_length=1)
 
+    # N18-2: Client garantiert, dass `monatswerte` ALLE teilbaren Monate enthält —
+    # serverseitig vorhandene Monate dieses Hashes, die im Payload fehlen, wurden
+    # client-seitig entfernt und dürfen gelöscht werden (rückwirkendes Entfernen).
+    # Alte Clients senden das Flag nicht → Verhalten unverändert (nur Upsert).
+    monate_vollstaendig: bool = False
+
     @field_validator("region")
     @classmethod
     def validate_region(cls, v: str) -> str:

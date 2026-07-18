@@ -300,6 +300,23 @@ async def submit_anlage(
                 sonstiges_verbrauch_kwh=mw.sonstiges_verbrauch_kwh,
             ))
 
+    # N18-2: Vollständigkeits-Submit — Monate dieses Hashes, die im Payload fehlen,
+    # wurden client-seitig entfernt (Datensatz gelöscht oder Korrektur filtert ihn
+    # raus) und werden hier gelöscht. Nur mit explizitem Flag; alte Clients ohne
+    # `monate_vollstaendig` behalten das reine Upsert-Verhalten.
+    geloescht = 0
+    if data.monate_vollstaendig:
+        gesendet = {(mw.jahr, mw.monat) for mw in data.monatswerte}
+        result = await db.execute(
+            select(Monatswert).where(Monatswert.anlage_id == anlage.id)
+        )
+        for vorhandenen_monat in result.scalars():
+            if (vorhandenen_monat.jahr, vorhandenen_monat.monat) not in gesendet:
+                await db.delete(vorhandenen_monat)
+                geloescht += 1
+    if geloescht:
+        warnings.append(f"{geloescht} rückwirkend entfernte(r) Monat(e) gelöscht")
+
     await db.commit()
     await db.refresh(anlage)
 
