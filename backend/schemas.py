@@ -12,7 +12,44 @@ from typing import Literal
 # =============================================================================
 
 class MonatswertInput(BaseModel):
-    """Ein Monatswert für die Einreichung."""
+    """Ein Monatswert für die Einreichung.
+
+    **Bedeutung der Felder (Stand eedc S6, 2026-07-31).** Der Client rechnet den
+    Payload; der Server hat die Rohdaten nie gesehen und kann nichts nachrechnen.
+    Deshalb steht die Semantik hier — sie ist der Vertrag, an dem Auswertung und
+    Anzeige hängen. Gegenstück: `eedc/backend/services/community_service.py`.
+
+    Mit der eedc-Monats-Fakten-Schicht (ADR-002/P10) hat sich an dieser Struktur
+    **nichts** geändert — kein Feld kam hinzu, keines fiel weg, keine Grenze hat
+    sich verschoben. Was sich geändert hat, ist die *Auflösung* auf Client-Seite,
+    und drei Feldgruppen tragen sie sichtbar:
+
+    - ``ertrag_kwh`` — PV-Module **und** Balkonkraftwerk, aber **kein** sonstiger
+      Erzeuger (BHKW/Mini-KWK). Das ist die Achse, aus der
+      ``spez_ertrag_kwh_kwp`` gebildet wird; ein Brennstoff-Erzeuger darin würde
+      jede betroffene Anlage im PV-Ranking nach oben schieben. Anlagen, die ihre
+      Erzeugung als **ein** Anlagen-Aggregat statt je Modul pflegen, liefern hier
+      seit S6 überhaupt erst Werte — vorher blieb ihre Monatsliste leer und der
+      Submit scheiterte an ``min_length=1``.
+    - ``autarkie_prozent`` / ``eigenverbrauch_prozent`` — die kanonische
+      Haus-Bilanz: Bezugsgröße ist die **Erzeugung hinter dem Hauszähler**
+      (also inkl. BHKW) plus Speicher-Entladung **und V2H**. Sie ist damit
+      deckungsgleich mit dem, was der Anwender in eedc auf dem Bildschirm sieht,
+      und **nicht** aus ``ertrag_kwh`` nachrechenbar, sobald ein weiterer
+      Erzeuger hinter demselben Zähler sitzt.
+    - ``eauto_*`` / ``wallbox_*`` — nur **privat** genutzte Fahrzeuge. Ein in
+      eedc als *Dienstwagen* markiertes Auto ist von allen anlagenbezogenen
+      Auswertungen ausgenommen und liefert deshalb weder km noch Ladung noch
+      V2H. E-Auto und Wallbox bleiben getrennt gemeldet (sie messen denselben
+      Fluss an zwei Punkten) — wer beide addiert, zählt doppelt.
+
+    **Altbestand:** Datensätze, die vor S6 eingereicht wurden, tragen die alte
+    Auflösung. Es gibt bewusst **keine** Markierung und keine Migration: der
+    Submit ist ein Voll-Submit (``monate_vollstaendig``), also überschreibt jede
+    Anlage ihren kompletten Verlauf beim nächsten manuellen oder automatischen
+    Teilen. Bis dahin liegen zwei Rechenstände nebeneinander — betroffen sind nur
+    Anlagen mit BHKW, V2H, Dienstwagen oder ohne Pro-Modul-Messung.
+    """
     jahr: int = Field(..., ge=2010, le=2050)
     monat: int = Field(..., ge=1, le=12)
     ertrag_kwh: float = Field(..., ge=0)
