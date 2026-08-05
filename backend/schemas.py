@@ -37,6 +37,19 @@ class MonatswertInput(BaseModel):
       deckungsgleich mit dem, was der Anwender in eedc auf dem Bildschirm sieht,
       und **nicht** aus ``ertrag_kwh`` nachrechenbar, sobald ein weiterer
       Erzeuger hinter demselben Zähler sitzt.
+    - ``speicher_ladung_kwh`` / ``speicher_entladung_kwh`` — gemessen an der
+      Stelle, die zur **Kopplung** des Speichers passt: bei AC-Kopplung
+      hausseitig hinter dem Batterie-Wechselrichter, bei DC-Kopplung am
+      Batterie-Anschluss; **beide Werte von derselben Seite**. Ein einheitlicher
+      AC-Vertrag wäre nicht erfüllbar — bei einem DC-gekoppelten Speicher gibt es
+      zwischen Batterie und Hybrid-Wechselrichter keinen AC-Punkt. Folge für den
+      Vergleich: der aus beiden gebildete Wirkungsgrad enthält bei AC-Kopplung
+      **zwei Wandlungen**, bei DC-Kopplung keine — er ist also nur innerhalb
+      derselben Kopplungsart vergleichbar. Der Server rechnet das **nicht** um;
+      die Kopplung selbst wird bewusst nicht mitgeliefert (sie wäre ein weiteres
+      Anlagenmerkmal in einem anonymen Datensatz). Bis zur Einführung des
+      Kopplungs-Feldes in eedc (#351/N-60) nannte die Feldbeschreibung im Client
+      die Messstelle nicht — ältere Datensätze können gemischte Seiten tragen.
     - ``eauto_*`` / ``wallbox_*`` — nur **privat** genutzte Fahrzeuge. Ein in
       eedc als *Dienstwagen* markiertes Auto ist von allen anlagenbezogenen
       Auswertungen ausgenommen und liefert deshalb weder km noch Ladung noch
