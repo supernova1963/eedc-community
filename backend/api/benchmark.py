@@ -114,8 +114,22 @@ async def berechne_speicher_kpis(
     if monate > 0 and monate < 12:
         zyklen = zyklen * (12 / monate)
 
-    # Wirkungsgrad = Entladung / Ladung
+    # Wirkungsgrad = Entladung / Ladung.
+    # eedc F-23: über 100 % kann kein Speicher — solche Werte stammen aus
+    # nicht zusammenpassenden Messstellen (DC gegen AC) und werden als
+    # „unbekannt" ausgewiesen, nicht als Messung. Geklemmt wird NICHT: ein auf
+    # 100 % gestutzter Wert sähe aus wie ein perfekter Speicher.
+    # Import lokal — `components` liest `get_zeitraum_filter` aus diesem Modul.
+    from api.components import (
+        WIRKUNGSGRAD_MAX_PROZENT,
+        WIRKUNGSGRAD_MIN_PROZENT,
+    )
+
     wirkungsgrad = (entladung / ladung * 100) if ladung > 0 else None
+    if wirkungsgrad is not None and not (
+        WIRKUNGSGRAD_MIN_PROZENT <= wirkungsgrad <= WIRKUNGSGRAD_MAX_PROZENT
+    ):
+        wirkungsgrad = None
 
     # Netz-Anteil
     netz_anteil = (ladung_netz / ladung * 100) if ladung > 0 else None

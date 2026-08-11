@@ -5,8 +5,10 @@ Erweiterte Vergleiche für Speicher, Wärmepumpe, E-Auto, etc.
 gruppiert nach Klassen und Regionen.
 """
 
+from statistics import median
+
 from fastapi import APIRouter, Depends
-from sqlalchemy import select, func
+from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
@@ -14,6 +16,66 @@ from core import get_db
 from models import Anlage, Monatswert
 
 router = APIRouter(prefix="/components", tags=["Komponenten Deep-Dives"])
+
+
+# =============================================================================
+# Speicher-Wirkungsgrad: Schutzregeln (eedc F-23, gemeldet von rapahl 2026-08-08)
+# =============================================================================
+#
+# Der Client schickt KEINEN Wirkungsgrad — nur Roh-kWh. Dieser Server bildet
+# den Prozentwert selbst, und das ist die einzige Stelle im ganzen System, an
+# der aus fremden Rohdaten eine abgeleitete Kennzahl entsteht. Entsprechend
+# vorsichtig muss sie sein: Vor diesen Regeln reichte EINE Anlage mit
+# kaputten Messstellen, um ein Klassenmittel auf 128,6 % zu heben — ein Wert,
+# den ein Nutzer zu Recht gemeldet hat, weil ein Speicher nicht mehr abgeben
+# kann, als er aufgenommen hat.
+
+#: Mindestlaufzeit für einen belastbaren Wirkungsgrad. Darunter dominiert der
+#: Ladestand-Übertrag über die Zeitraumgrenzen (was am Monatsende im Speicher
+#: steht, wird erst im Folgemonat entladen). Identisch mit der Schwelle, die
+#: die Zyklen in derselben Tabellenzeile seit jeher verwenden.
+WIRKUNGSGRAD_MIN_MONATE = 6
+
+#: Physikalisch mögliches Band. Über 100 % kann kein Speicher; unter 50 % auch
+#: keiner, der in Betrieb ist. Werte außerhalb sind Messfehler — typisch eine
+#: DC- gegen eine AC-Messstelle (siehe Payload-Vertrag in `schemas.py`) oder
+#: „Ladung" als reine PV-Ladung gepflegt. Sie werden ÜBERSPRUNGEN, nicht
+#: geklemmt: ein geklemmter Wert sähe wie eine Messung aus.
+WIRKUNGSGRAD_MIN_PROZENT = 50.0
+WIRKUNGSGRAD_MAX_PROZENT = 100.0
+
+
+def _im_fenster():
+    """Zeitfilter „letzte 12 Monate" — dieselbe Basis wie die Zyklen.
+
+    Vorher lief der Wirkungsgrad kumulativ über alles je Eingereichte, während
+    die Zyklen daneben jahresnormiert waren: zwei Zeitbasen in einer Zeile.
+    Ein fehlerhafter Altbestand blieb dadurch für immer im Wirkungsgrad, auch
+    wenn er aus den Zyklen längst herausgerollt war.
+    """
+    from api.benchmark import get_zeitraum_filter
+
+    von_jahr, von_monat, bis_jahr, bis_monat = get_zeitraum_filter("letzte_12_monate")
+    return and_(
+        or_(
+            Monatswert.jahr > von_jahr,
+            and_(Monatswert.jahr == von_jahr, Monatswert.monat >= von_monat),
+        ),
+        or_(
+            Monatswert.jahr < bis_jahr,
+            and_(Monatswert.jahr == bis_jahr, Monatswert.monat <= bis_monat),
+        ),
+    )
+
+
+def _median(werte: list[float]) -> float | None:
+    """Median statt arithmetischem Mittel — ein Ausreißer kippt ihn nicht.
+
+    Bei den hier üblichen Klassengrößen (gut ein Dutzend Anlagen) verschiebt
+    ein einzelner Wert von 400 % das arithmetische Mittel um zweistellige
+    Prozentpunkte, den Median dagegen um höchstens einen Platz.
+    """
+    return round(median(werte), 1) if werte else None
 
 
 # =============================================================================
@@ -25,9 +87,19 @@ class SpeicherKlasse(BaseModel):
     von_kwh: float
     bis_kwh: float | None
     anzahl: int
+    #: MEDIAN des Wirkungsgrads über die letzten 12 Monate, nur aus Anlagen mit
+    #: mindestens `WIRKUNGSGRAD_MIN_MONATE` Monaten und plausiblem Wert.
+    #: Der Feldname bleibt für Bestandsclients.
     durchschnitt_wirkungsgrad: float | None
     durchschnitt_zyklen: float | None
     durchschnitt_netz_anteil: float | None
+    #: Wie viele Anlagen den Wirkungsgrad-Wert tragen — er ist fast immer
+    #: kleiner als `anzahl`, und das darf man sehen.
+    anzahl_wirkungsgrad: int = 0
+    #: Wie viele Anlagen wegen unmöglicher Werte übersprungen wurden. Steht
+    #: hier, statt still zu verschwinden: ein Filter, der nichts sagt, sieht
+    #: von außen aus wie „es gab nichts zu filtern".
+    verworfen_wirkungsgrad: int = 0
 
 
 class SpeicherByClass(BaseModel):
@@ -88,8 +160,14 @@ async def get_speicher_by_class(db: AsyncSession = Depends(get_db)):
     Verwendet für:
     - Komponenten Tab: Speicher-Vergleich nach Größe
     """
-    # Definiere Kapazitätsklassen
+    # Definiere Kapazitätsklassen.
+    #
+    # eedc #F-23: Die Klasse unter 5 kWh fehlte — Anlagen mit kleinem Speicher
+    # tauchten in dieser Auswertung überhaupt nicht auf, und die ausgewiesene
+    # Anlagenzahl (Summe der Klassen) war entsprechend zu klein. Die Grenzen
+    # entsprechen jetzt denen, die der Client für die „(Du)"-Markierung nutzt.
     klassen_def = [
+        (0, 5, "bis 5 kWh"),
         (5, 10, "5-10 kWh"),
         (10, 15, "10-15 kWh"),
         (15, None, ">15 kWh"),
@@ -98,8 +176,9 @@ async def get_speicher_by_class(db: AsyncSession = Depends(get_db)):
     klassen = []
 
     for von, bis, label in klassen_def:
-        # Anlagen in dieser Klasse
-        query = select(Anlage).where(Anlage.speicher_kwh >= von)
+        # Anlagen in dieser Klasse. `> 0` statt `>= 0`, damit Anlagen ohne
+        # Speicher nicht in die unterste Klasse fallen.
+        query = select(Anlage).where(Anlage.speicher_kwh > von if von == 0 else Anlage.speicher_kwh >= von)
         if bis is not None:
             query = query.where(Anlage.speicher_kwh < bis)
 
@@ -121,32 +200,59 @@ async def get_speicher_by_class(db: AsyncSession = Depends(get_db)):
         wirkungsgrade = []
         zyklen_liste = []
         netz_anteile = []
+        verworfen_wirkungsgrad = 0
 
         for anlage in anlagen:
-            # Monatswerte für diese Anlage
+            # Monatswerte für diese Anlage — auf dasselbe Zeitfenster begrenzt,
+            # das die Zyklen weiter unten verwenden (eedc F-23). Vorher lief
+            # der Wirkungsgrad KUMULATIV über alles je Eingereichte, während
+            # die Zyklen daneben auf 12 Monate normiert waren: zwei Zeitbasen
+            # in einer Tabellenzeile. Ein fehlerhafter Altbestand aus 2021 hat
+            # den Wirkungsgrad dauerhaft verseucht, obwohl er aus den Zyklen
+            # längst herausgerollt war.
             result = await db.execute(
                 select(
                     func.sum(Monatswert.speicher_ladung_kwh),
                     func.sum(Monatswert.speicher_entladung_kwh),
                     func.sum(Monatswert.speicher_ladung_netz_kwh),
+                    func.count(Monatswert.id),
                 )
                 .where(Monatswert.anlage_id == anlage.id)
                 .where(Monatswert.speicher_ladung_kwh.isnot(None))
+                .where(_im_fenster())
             )
             row = result.one()
 
             ladung = row[0] or 0
             entladung = row[1] or 0
             netz_ladung = row[2] or 0
+            monate_mit_ladung = row[3] or 0
 
-            # Wirkungsgrad
+            # Wirkungsgrad — mit denselben zwei Schutzregeln, die die Zyklen
+            # in derselben Zeile schon immer hatten, plus einer dritten:
+            #
+            #   1. Mindestlaufzeit: unter WIRKUNGSGRAD_MIN_MONATE dominiert der
+            #      Ladestand-Übertrag über die Zeitraumgrenzen.
+            #   2. Plausibilität: über 100 % kann kein Speicher, unter 50 %
+            #      auch keiner — solche Werte sind Messfehler (typisch: eine
+            #      DC-Messstelle gegen eine AC-Messstelle, oder „Ladung" als
+            #      reine PV-Ladung gepflegt). Sie fließen NICHT ins Mittel.
+            #      Der Server rechnet nicht nach, aber er nimmt auch nicht
+            #      alles an: die Rohwerte bleiben unangetastet, nur diese
+            #      Auswertung überspringt sie.
+            #   3. Median statt Mittelwert (unten) — robust gegen den Rest.
             if ladung > 0:
-                wirkungsgrad = (entladung / ladung) * 100
-                wirkungsgrade.append(wirkungsgrad)
+                if monate_mit_ladung >= WIRKUNGSGRAD_MIN_MONATE:
+                    wirkungsgrad = (entladung / ladung) * 100
+                    if WIRKUNGSGRAD_MIN_PROZENT <= wirkungsgrad <= WIRKUNGSGRAD_MAX_PROZENT:
+                        wirkungsgrade.append(wirkungsgrad)
+                    else:
+                        verworfen_wirkungsgrad += 1
 
-                # Netz-Anteil
-                netz_anteil = (netz_ladung / ladung) * 100
-                netz_anteile.append(netz_anteil)
+                # Netz-Anteil ist ein Anteil, kein Quotient zweier Messstellen —
+                # er kann konstruktionsbedingt nicht über 100 % gehen und
+                # braucht die Mindestlaufzeit nicht.
+                netz_anteile.append(min(100.0, (netz_ladung / ladung) * 100))
 
             # Zyklen pro Jahr (basierend auf Kapazität)
             if anlage.speicher_kwh and anlage.speicher_kwh > 0:
@@ -155,10 +261,11 @@ async def get_speicher_by_class(db: AsyncSession = Depends(get_db)):
                     select(func.count(Monatswert.id))
                     .where(Monatswert.anlage_id == anlage.id)
                     .where(Monatswert.speicher_entladung_kwh.isnot(None))
+                    .where(_im_fenster())
                 )
                 anzahl_monate = monate_result.scalar() or 0
 
-                if anzahl_monate >= 6 and entladung > 0:
+                if anzahl_monate >= WIRKUNGSGRAD_MIN_MONATE and entladung > 0:
                     # Hochrechnung auf Jahr
                     jahres_entladung = (entladung / anzahl_monate) * 12
                     zyklen = jahres_entladung / anlage.speicher_kwh
@@ -168,9 +275,13 @@ async def get_speicher_by_class(db: AsyncSession = Depends(get_db)):
             von_kwh=von,
             bis_kwh=bis,
             anzahl=len(anlagen),
-            durchschnitt_wirkungsgrad=round(sum(wirkungsgrade) / len(wirkungsgrade), 1) if wirkungsgrade else None,
+            # Median: ein einzelner absurder Wert kippt ihn nicht. Genau das
+            # war die Ursache der 128,6 %, die ein Nutzer am 08.08. gemeldet hat.
+            durchschnitt_wirkungsgrad=_median(wirkungsgrade),
             durchschnitt_zyklen=round(sum(zyklen_liste) / len(zyklen_liste), 0) if zyklen_liste else None,
-            durchschnitt_netz_anteil=round(sum(netz_anteile) / len(netz_anteile), 1) if netz_anteile else None,
+            durchschnitt_netz_anteil=_median(netz_anteile),
+            anzahl_wirkungsgrad=len(wirkungsgrade),
+            verworfen_wirkungsgrad=verworfen_wirkungsgrad,
         ))
 
     return SpeicherByClass(klassen=klassen)

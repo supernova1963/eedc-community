@@ -650,7 +650,19 @@ async def _berechne_ranking_wert(db: AsyncSession, anlage, category: str) -> flo
         )
         row = result.one()
         if row[0] and row[1] and row[0] > 0:
-            return (row[1] / row[0]) * 100
+            # eedc F-23: dieselbe Plausibilitätsgrenze wie in der
+            # Komponenten-Auswertung. Ohne sie führte die Rangliste „Top
+            # Wirkungsgrad" ausgerechnet die Anlage an, deren Messstellen
+            # nicht zusammenpassen — ein Ranking, das den kaputtesten
+            # Datensatz belohnt.
+            from api.components import (
+                WIRKUNGSGRAD_MAX_PROZENT,
+                WIRKUNGSGRAD_MIN_PROZENT,
+            )
+
+            wirkungsgrad = (row[1] / row[0]) * 100
+            if WIRKUNGSGRAD_MIN_PROZENT <= wirkungsgrad <= WIRKUNGSGRAD_MAX_PROZENT:
+                return wirkungsgrad
         return None
 
     elif category == "jaz":
