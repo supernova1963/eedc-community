@@ -68,14 +68,28 @@ def _im_fenster():
     )
 
 
+#: Mindestzahl an Anlagen für einen ausgewiesenen Community-Wert. Bestehende
+#: Konvention dieses Servers (`benchmark.py::_make_monats_kpi`, `trends.py`) —
+#: ein „Median" aus einem einzigen Wert ist kein Median, sondern der Wert genau
+#: einer Anlage. In einer anonymen Community wäre er zweierlei: statistisch
+#: wertlos und ein Rückschluss auf einen einzelnen Teilnehmer.
+MIN_ANLAGEN_FUER_AGGREGAT = 3
+
+
 def _median(werte: list[float]) -> float | None:
     """Median statt arithmetischem Mittel — ein Ausreißer kippt ihn nicht.
 
     Bei den hier üblichen Klassengrößen (gut ein Dutzend Anlagen) verschiebt
     ein einzelner Wert von 400 % das arithmetische Mittel um zweistellige
     Prozentpunkte, den Median dagegen um höchstens einen Platz.
+
+    Unterhalb von `MIN_ANLAGEN_FUER_AGGREGAT` gibt es **keinen** Wert: lieber
+    ein ehrliches „—" als eine Zahl, die wie ein Vergleich aussieht und keiner
+    ist. `anzahl_wirkungsgrad` steht daneben und sagt, woran es lag.
     """
-    return round(median(werte), 1) if werte else None
+    if len(werte) < MIN_ANLAGEN_FUER_AGGREGAT:
+        return None
+    return round(median(werte), 1)
 
 
 # =============================================================================
