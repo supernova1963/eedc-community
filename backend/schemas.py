@@ -56,6 +56,37 @@ class MonatswertInput(BaseModel):
       V2H. E-Auto und Wallbox bleiben getrennt gemeldet (sie messen denselben
       Fluss an zwei Punkten) — wer beide addiert, zählt doppelt.
 
+    **Neu ab eedc v4.0.22 — drei Felder, die der Server NICHT selbst bilden darf**
+    (eedc #387 und F-47):
+
+    - ``soll_ertrag_kwh`` — die **PVGIS-Erwartung genau dieses Monats** in kWh,
+      aus der *aktiven* Prognose der Anlage. Sie trägt, was nur der Client weiß:
+      exakte Koordinaten samt Horizontprofil, je Modulgruppe eigene Ausrichtung
+      und Neigung, AC-Kappung und Wechselrichtergrenze — und den
+      **tagesgenau gekürzten Anschaffungsmonat**
+      (``core/berechnungen/monatsfenster.py::monatsfenster_investition``). Genau
+      deshalb sitzt die Rechnung im Client: ein serverseitiges PVGIS wäre eine
+      zweite Konstruktionsstelle für dieselbe Größe. Anlagen ohne aktive
+      PVGIS-Prognose senden ``None``.
+    - ``co2_vermieden_kg`` — eedcs **einziger** CO₂-Kanon (ADR-001/DI-2:
+      Eigenverbrauch × Strommix **plus Wärmepumpe und E-Mobilität**). Er ersetzt
+      die serverseitige Rechnung ``Eigenverbrauch × 0,38``, die WP und E-Mob
+      ganz ausließ und die Gemeinschaftssumme um gut 22 % zu niedrig auswies.
+    - ``eigenverbrauch_kwh`` — der gemessene Eigenverbrauch in kWh. Der Server
+      hat ihn bis dahin aus ``Erzeugung − Einspeisung`` rekonstruiert; das ist
+      falsch, sobald ein weiterer Erzeuger hinter demselben Zähler sitzt oder
+      der Speicher mitspielt.
+
+    ⚠ **Alle drei sind optional und bleiben es.** Ältere Clients senden sie nicht;
+    dort greifen die bisherigen Wege weiter. Eine Nachrechnung auf dem Server
+    gibt es nicht — fehlt der Wert, fehlt die Aussage, sie wird nicht ersetzt.
+
+    ⚑ **Angenommen ab jetzt, ausgewertet ab dem 01.09.2026.** Dieser Stand
+    *speichert* die drei Felder nur; die Rangliste rechnet unverändert weiter wie
+    bisher. Erst ein eigener Deploy am 01.09. stellt die Berechnung um — bewusst
+    an *einem* Tag statt schleichend, und erst dann, wenn der Maßstab bei genug
+    Anlagen angekommen ist.
+
     **Altbestand:** Datensätze, die vor S6 eingereicht wurden, tragen die alte
     Auflösung. Es gibt bewusst **keine** Markierung und keine Migration: der
     Submit ist ein Voll-Submit (``monate_vollstaendig``), also überschreibt jede
@@ -70,6 +101,11 @@ class MonatswertInput(BaseModel):
     netzbezug_kwh: float | None = Field(None, ge=0)
     autarkie_prozent: float | None = Field(None, ge=0, le=100)
     eigenverbrauch_prozent: float | None = Field(None, ge=0, le=100)
+
+    # Maßstab und Kanon-Größen (ab eedc v4.0.22) — siehe Vertrag im Docstring
+    soll_ertrag_kwh: float | None = Field(None, ge=0)
+    co2_vermieden_kg: float | None = Field(None, ge=0)
+    eigenverbrauch_kwh: float | None = Field(None, ge=0)
 
     # Speicher-KPIs
     speicher_ladung_kwh: float | None = Field(None, ge=0)
@@ -125,6 +161,12 @@ class AnlageSubmitInput(BaseModel):
     neigung_grad: int = Field(..., ge=0, le=90)
     speicher_kwh: float | None = Field(None, ge=0, le=100)
     installation_jahr: int = Field(..., ge=2000, le=2050)
+
+    # Jahres-SOLL der aktiven PVGIS-Prognose (kWh) — der Nenner der saisonalen
+    # Hochrechnung (eedc #387, Weg A). Eine Zahl statt eines 12er-Arrays: die
+    # Monatsform steckt bereits in `soll_ertrag_kwh` je Monatswert. `None`, wenn
+    # die Anlage keine aktive Prognose hat. Wird ab dem 01.09.2026 ausgewertet.
+    soll_jahr_kwh: float | None = Field(None, ge=0)
 
     # Ausstattung
     hat_waermepumpe: bool = False

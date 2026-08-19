@@ -184,6 +184,7 @@ async def submit_anlage(
         anlage.neigung_grad = data.neigung_grad
         anlage.speicher_kwh = data.speicher_kwh
         anlage.installation_jahr = data.installation_jahr
+        anlage.soll_jahr_kwh = data.soll_jahr_kwh
         anlage.hat_waermepumpe = data.hat_waermepumpe
         anlage.wp_art = data.wp_art
         anlage.hat_eauto = data.hat_eauto
@@ -205,6 +206,7 @@ async def submit_anlage(
             neigung_grad=data.neigung_grad,
             speicher_kwh=data.speicher_kwh,
             installation_jahr=data.installation_jahr,
+            soll_jahr_kwh=data.soll_jahr_kwh,
             hat_waermepumpe=data.hat_waermepumpe,
             wp_art=data.wp_art,
             hat_eauto=data.hat_eauto,
@@ -237,6 +239,14 @@ async def submit_anlage(
             existing.netzbezug_kwh = mw.netzbezug_kwh
             existing.autarkie_prozent = mw.autarkie_prozent
             existing.eigenverbrauch_prozent = mw.eigenverbrauch_prozent
+            # Maßstab + Kanon-Größen (ab eedc v4.0.22, #387/F-47). Bewusst auch
+            # dann gesetzt, wenn der Client None schickt: der Submit ist ein
+            # Voll-Submit — der Client sagt, was gilt. Ein alter Client räumt das
+            # SOLL damit ab; das ist heilbar, ein stehengebliebener falscher
+            # Maßstab wäre es nicht.
+            existing.soll_ertrag_kwh = mw.soll_ertrag_kwh
+            existing.co2_vermieden_kg = mw.co2_vermieden_kg
+            existing.eigenverbrauch_kwh = mw.eigenverbrauch_kwh
             # Speicher
             existing.speicher_ladung_kwh = mw.speicher_ladung_kwh
             existing.speicher_entladung_kwh = mw.speicher_entladung_kwh
@@ -273,6 +283,11 @@ async def submit_anlage(
                 netzbezug_kwh=mw.netzbezug_kwh,
                 autarkie_prozent=mw.autarkie_prozent,
                 eigenverbrauch_prozent=mw.eigenverbrauch_prozent,
+                # Maßstab + Kanon-Größen vom Client (ab eedc v4.0.22, #387/F-47).
+                # Werden ab dem 01.09.2026 ausgewertet; bis dahin nur gespeichert.
+                soll_ertrag_kwh=mw.soll_ertrag_kwh,
+                co2_vermieden_kg=mw.co2_vermieden_kg,
+                eigenverbrauch_kwh=mw.eigenverbrauch_kwh,
                 # Speicher
                 speicher_ladung_kwh=mw.speicher_ladung_kwh,
                 speicher_entladung_kwh=mw.speicher_entladung_kwh,

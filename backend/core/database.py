@@ -56,5 +56,23 @@ async def run_migrations(conn):
                 connection.execute(text(
                     "ALTER TABLE anlagen ADD COLUMN update_window_start TIMESTAMP"
                 ))
+            # v4.0.22 (eedc #387): Jahres-SOLL der Anlage aus der Client-PVGIS-
+            # Prognose. Nenner der saisonalen Hochrechnung; NULL bis der Besitzer
+            # einmal mit einer aktuellen eedc-Version geteilt hat.
+            if "soll_jahr_kwh" not in existing:
+                connection.execute(text(
+                    "ALTER TABLE anlagen ADD COLUMN soll_jahr_kwh FLOAT"
+                ))
+        if "monatswerte" in inspector.get_table_names():
+            existing_mw = {col["name"] for col in inspector.get_columns("monatswerte")}
+            # v4.0.22 (eedc #387 / F-47): Maßstab und Kanon-Größen vom Client.
+            # `soll_ertrag_kwh` trägt den tagesgenau gekürzten Anschaffungsmonat
+            # mit; `co2_vermieden_kg` und `eigenverbrauch_kwh` ersetzen die zwei
+            # Stellen, an denen der Server bisher selbst gerechnet hat.
+            for spalte in ("soll_ertrag_kwh", "co2_vermieden_kg", "eigenverbrauch_kwh"):
+                if spalte not in existing_mw:
+                    connection.execute(text(
+                        f"ALTER TABLE monatswerte ADD COLUMN {spalte} FLOAT"
+                    ))
 
     await conn.run_sync(_run)

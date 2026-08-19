@@ -46,6 +46,11 @@ class Anlage(Base):
     wp_art: Mapped[str | None] = mapped_column(String(20), nullable=True)  # luft_wasser, sole_wasser
 
     # Metadaten
+    # Jahres-SOLL der aktiven PVGIS-Prognose (kWh), vom Client geliefert — der
+    # Nenner der saisonalen Hochrechnung (eedc #387, Weg A). NULL = Altbestand
+    # oder Client < v4.0.22; dann greift die Kaskade in core/spez_ertrag.py.
+    soll_jahr_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     erstellt_am: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     aktualisiert_am: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     # Rate-Limit-Fenster (rollend 24h, statt Monatswechsel). Beim ersten
@@ -80,6 +85,16 @@ class Monatswert(Base):
     # Berechnete Werte
     autarkie_prozent: Mapped[float | None] = mapped_column(Float, nullable=True)
     eigenverbrauch_prozent: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Vom Client mitgelieferte Maßstäbe und Kanon-Größen (eedc #387/F-47, ab v4.0.22).
+    # Der Server konstruiert davon NICHTS selbst — er hat die Rohdaten nie gesehen.
+    # `soll_ertrag_kwh` ist die PVGIS-Erwartung genau dieses Monats, inklusive
+    # tagesgenau gekürztem Anschaffungsmonat; `co2_vermieden_kg` und
+    # `eigenverbrauch_kwh` lösen die beiden Stellen ab, an denen der Server bis
+    # dahin nachgerechnet hat (F-47). NULL = Altbestand oder Client < v4.0.22.
+    soll_ertrag_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    co2_vermieden_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    eigenverbrauch_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Speicher-KPIs
     speicher_ladung_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
