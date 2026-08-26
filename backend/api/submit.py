@@ -187,6 +187,7 @@ async def submit_anlage(
         anlage.soll_jahr_kwh = data.soll_jahr_kwh
         anlage.hat_waermepumpe = data.hat_waermepumpe
         anlage.wp_art = data.wp_art
+        anlage.kuehlung_art = data.kuehlung_art
         anlage.hat_eauto = data.hat_eauto
         anlage.hat_wallbox = data.hat_wallbox
         anlage.hat_balkonkraftwerk = data.hat_balkonkraftwerk
@@ -209,6 +210,7 @@ async def submit_anlage(
             soll_jahr_kwh=data.soll_jahr_kwh,
             hat_waermepumpe=data.hat_waermepumpe,
             wp_art=data.wp_art,
+            kuehlung_art=data.kuehlung_art,
             hat_eauto=data.hat_eauto,
             hat_wallbox=data.hat_wallbox,
             hat_balkonkraftwerk=data.hat_balkonkraftwerk,
@@ -255,6 +257,8 @@ async def submit_anlage(
             existing.wp_stromverbrauch_kwh = mw.wp_stromverbrauch_kwh
             existing.wp_heizwaerme_kwh = mw.wp_heizwaerme_kwh
             existing.wp_warmwasser_kwh = mw.wp_warmwasser_kwh
+            # eedc W-14: Teilmenge des WP-Stroms, die ins Kühlen ging.
+            existing.wp_strom_kuehlen_kwh = mw.wp_strom_kuehlen_kwh
             # E-Auto
             existing.eauto_ladung_gesamt_kwh = mw.eauto_ladung_gesamt_kwh
             existing.eauto_ladung_pv_kwh = mw.eauto_ladung_pv_kwh
@@ -296,6 +300,7 @@ async def submit_anlage(
                 wp_stromverbrauch_kwh=mw.wp_stromverbrauch_kwh,
                 wp_heizwaerme_kwh=mw.wp_heizwaerme_kwh,
                 wp_warmwasser_kwh=mw.wp_warmwasser_kwh,
+                wp_strom_kuehlen_kwh=mw.wp_strom_kuehlen_kwh,
                 # E-Auto
                 eauto_ladung_gesamt_kwh=mw.eauto_ladung_gesamt_kwh,
                 eauto_ladung_pv_kwh=mw.eauto_ladung_pv_kwh,

@@ -147,12 +147,27 @@ async def berechne_wp_kpis(
     von_jahr: int, von_monat: int,
     bis_jahr: int, bis_monat: int,
 ) -> dict | None:
-    """Berechnet Wärmepumpe-KPIs für einen Zeitraum."""
+    """Berechnet Wärmepumpe-KPIs für einen Zeitraum.
+
+    ⭐ **Der Kühlstrom gehört nicht in den JAZ-Nenner** (eedc **W-14**, SOLL
+    Wärme/Klima §4.2 Fall 4). Der JAZ hier ist ``(Heizwärme + Warmwasser) ÷
+    Stromverbrauch``. Wer kühlt, hat diesen Strom im Nenner — die zugehörige
+    **Kältemenge** steht aber in keinem Zähler, weil eedc sie nicht als Wärme
+    führt (und die meisten Anlagen keinen Kältemengenzähler haben). Eine
+    kühlende Anlage stand damit systematisch schlechter da als eine, die nicht
+    kühlt, und zwar unabhängig davon, ob aktiv oder passiv gekühlt wird.
+
+    ⚠ **Der Server rechnet die Größe nicht aus — er bekommt sie geliefert.** Er
+    hat die Betriebsart-Spur nie gesehen; ``wp_strom_kuehlen_kwh`` kommt aus dem
+    Client (eedc ab 2026-08-26). ``NULL`` heißt „unbekannt" und wird wie 0 behandelt
+    — das ist genau der Altbestand, für den bisher gar nichts abgezogen wurde.
+    """
     result = await db.execute(
         select(
             func.sum(Monatswert.wp_stromverbrauch_kwh),
             func.sum(Monatswert.wp_heizwaerme_kwh),
             func.sum(Monatswert.wp_warmwasser_kwh),
+            func.sum(Monatswert.wp_strom_kuehlen_kwh),
         )
         .where(Monatswert.anlage_id == anlage_id)
         .where(
@@ -168,18 +183,25 @@ async def berechne_wp_kpis(
     if not row or not row[0]:
         return None
 
-    strom, heiz, ww = row
+    strom, heiz, ww, kuehl = row
     strom = strom or 0
     heiz = heiz or 0
     ww = ww or 0
+    # Nie negativ, nie größer als der Gesamtstrom — der Client hält die
+    # Invariante bereits, hier steht sie als Zusicherung gegen Altbestand.
+    kuehl = min(max(kuehl or 0, 0), max(strom, 0))
 
     if strom == 0:
         return None
 
     waerme_gesamt = heiz + ww
-    jaz = waerme_gesamt / strom if strom > 0 else None
+    # W-14: der Nenner ist der Strom, der zu DIESER Wärme gehört.
+    strom_waerme = strom - kuehl
+    jaz = waerme_gesamt / strom_waerme if strom_waerme > 0 else None
 
     return {
+        # `stromverbrauch` bleibt der GESAMTE Verbrauch — er ist eine Menge und
+        # wird als solche verglichen, nicht als Kennzahl-Nenner.
         "stromverbrauch": round(strom, 1),
         "waermeerzeugung": round(waerme_gesamt, 1),
         "jaz": round(jaz, 2) if jaz else None,
@@ -241,9 +263,19 @@ async def berechne_community_avg_jaz(db: AsyncSession, wp_art: str | None = None
 
     Args:
         wp_art: Optional — wenn gesetzt, nur Anlagen mit gleicher WP-Art.
+
+    ⛔ **Passiv gekühlte Anlagen zählen hier nicht mit** (eedc SOLL §4.1/§7 A5).
+    Passive Kühlung läuft nur über Umwälzpumpen; ihre Effizienz liegt um ein
+    Vielfaches über der aktiv gekühlter Anlagen. Ihre **eigene** Kennzahl ist
+    korrekt und wird weiter angezeigt — was eine Falschaussage wäre, ist sie in
+    denselben Durchschnitt zu werfen. ``NULL`` (Altbestand) zählt mit: unbekannt
+    ist nicht passiv.
     """
     # Hole alle Anlagen mit WP (optional gefiltert nach Art)
-    query = select(Anlage.id).where(Anlage.hat_waermepumpe == True)
+    query = select(Anlage.id).where(
+        Anlage.hat_waermepumpe == True,
+        (Anlage.kuehlung_art.is_(None)) | (Anlage.kuehlung_art != "passiv"),
+    )
     if wp_art:
         query = query.where(Anlage.wp_art == wp_art)
     result = await db.execute(query)
@@ -654,10 +686,16 @@ async def get_anlage_benchmark(
     if anlage.hat_waermepumpe:
         wp_kpis = await berechne_wp_kpis(db, anlage.id, von_jahr, von_monat, bis_jahr, bis_monat)
         if wp_kpis:
-            community_jaz = await berechne_community_avg_jaz(db)
+            # ⛔ **Wer passiv kühlt, bekommt seine Zahl — aber keinen Vergleich**
+            # (eedc SOLL §4.1/§7 A5). Der Community-Durchschnitt enthält passiv
+            # gekühlte Anlagen nicht mehr; sich selbst gegen einen Durchschnitt
+            # zu stellen, in dem man nicht vorkommt, wäre die zweite Hälfte
+            # derselben Falschaussage.
+            kuehlt_passiv = anlage.kuehlung_art == "passiv"
+            community_jaz = None if kuehlt_passiv else await berechne_community_avg_jaz(db)
             # Typ-spezifischer JAZ-Vergleich (nur mit gleicher WP-Art)
             jaz_typ_vergleich = None
-            if anlage.wp_art and wp_kpis.get("jaz"):
+            if anlage.wp_art and wp_kpis.get("jaz") and not kuehlt_passiv:
                 community_jaz_typ = await berechne_community_avg_jaz(db, wp_art=anlage.wp_art)
                 if community_jaz_typ is not None:
                     jaz_typ_vergleich = KPIVergleich(

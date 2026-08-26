@@ -63,13 +63,25 @@ async def run_migrations(conn):
                 connection.execute(text(
                     "ALTER TABLE anlagen ADD COLUMN soll_jahr_kwh FLOAT"
                 ))
+            # 2026-08-26 (eedc W-14 / SOLL Wärme/Klima §4.1): aktiv oder passiv
+            # gekühlt. Passiv gekühlte Anlagen erreichen ein Vielfaches der
+            # Effizienz — sie werden aus dem JAZ-Vergleich genommen, nicht
+            # umgerechnet. NULL bleibt Altbestand und wird wie bisher behandelt.
+            if "kuehlung_art" not in existing:
+                connection.execute(text(
+                    "ALTER TABLE anlagen ADD COLUMN kuehlung_art VARCHAR(20)"
+                ))
         if "monatswerte" in inspector.get_table_names():
             existing_mw = {col["name"] for col in inspector.get_columns("monatswerte")}
             # v4.0.22 (eedc #387 / F-47): Maßstab und Kanon-Größen vom Client.
             # `soll_ertrag_kwh` trägt den tagesgenau gekürzten Anschaffungsmonat
             # mit; `co2_vermieden_kg` und `eigenverbrauch_kwh` ersetzen die zwei
             # Stellen, an denen der Server bisher selbst gerechnet hat.
-            for spalte in ("soll_ertrag_kwh", "co2_vermieden_kg", "eigenverbrauch_kwh"):
+            # 2026-08-26 (eedc W-14): `wp_strom_kuehlen_kwh` ist die Teilmenge des
+            # WP-Stroms, die ins Kühlen ging. Sie kommt vom Client — der Server
+            # rechnet sie nicht aus, er hat die Betriebsart-Spur nie gesehen.
+            for spalte in ("soll_ertrag_kwh", "co2_vermieden_kg",
+                           "eigenverbrauch_kwh", "wp_strom_kuehlen_kwh"):
                 if spalte not in existing_mw:
                     connection.execute(text(
                         f"ALTER TABLE monatswerte ADD COLUMN {spalte} FLOAT"

@@ -33,7 +33,13 @@ class Anlage(Base):
 
     # Ausstattung
     hat_waermepumpe: Mapped[bool] = mapped_column(Boolean, default=False)
-    wp_art: Mapped[str | None] = mapped_column(String(20), nullable=True)  # luft_wasser, sole_wasser, grundwasser, luft_luft
+    # luft_wasser · sole_wasser · grundwasser · luft_luft · brauchwasser
+    wp_art: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # eedc W-14/SOLL §4.1: `keine` · `aktiv` · `passiv`. Eine Markierung, keine
+    # Menge — passiv gekühlte Anlagen erreichen ein Vielfaches der Effizienz
+    # aktiv gekühlter, ihr JAZ-Vergleich gegen sie wäre eine Falschaussage.
+    # NULL = Altbestand oder älterer Client; dann wird wie bisher verglichen.
+    kuehlung_art: Mapped[str | None] = mapped_column(String(20), nullable=True)
     hat_eauto: Mapped[bool] = mapped_column(Boolean, default=False)
     hat_wallbox: Mapped[bool] = mapped_column(Boolean, default=False)
     hat_balkonkraftwerk: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -43,7 +49,11 @@ class Anlage(Base):
     wallbox_kw: Mapped[float | None] = mapped_column(Float, nullable=True)  # Ladeleistung
     bkw_wp: Mapped[float | None] = mapped_column(Float, nullable=True)  # BKW Leistung in Wp
     sonstiges_bezeichnung: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    wp_art: Mapped[str | None] = mapped_column(String(20), nullable=True)  # luft_wasser, sole_wasser
+    # ⛔ Hier stand `wp_art` ein ZWEITES Mal (identische Spalte, kürzerer
+    # Kommentar). In SQLAlchemy gewinnt die spätere Deklaration stillschweigend —
+    # die Doppelung war folgenlos, aber sie hat die Definition zerteilt. Entfernt
+    # 2026-08-26 beim Ergänzen von `kuehlung_art`; die eine Deklaration steht
+    # oben bei der Ausstattung, wo sie hingehört.
 
     # Metadaten
     # Jahres-SOLL der aktiven PVGIS-Prognose (kWh), vom Client geliefert — der
@@ -105,6 +115,12 @@ class Monatswert(Base):
     wp_stromverbrauch_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
     wp_heizwaerme_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
     wp_warmwasser_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # eedc W-14: der Anteil von `wp_stromverbrauch_kwh`, der ins **Kühlen** ging.
+    # Ohne ihn stünde er im Nenner des JAZ, während die Kältemenge im Zähler
+    # fehlt — eine kühlende Anlage stünde systematisch schlechter da als eine,
+    # die es nicht tut. **Teilmenge, kein Summand** — nie addieren.
+    # NULL = Altbestand oder älterer Client („unbekannt", nicht „null kWh").
+    wp_strom_kuehlen_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # E-Auto-KPIs
     eauto_ladung_gesamt_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)

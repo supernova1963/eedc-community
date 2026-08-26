@@ -116,6 +116,14 @@ class MonatswertInput(BaseModel):
     wp_stromverbrauch_kwh: float | None = Field(None, ge=0)
     wp_heizwaerme_kwh: float | None = Field(None, ge=0)
     wp_warmwasser_kwh: float | None = Field(None, ge=0)
+    # eedc W-14 (Client ab 2026-08-26): der Anteil von `wp_stromverbrauch_kwh`, der ins
+    # **Kühlen** ging — eine **Teilmenge**, kein Summand. Er wird vom JAZ-Nenner
+    # abgezogen: Kühlstrom erzeugt keine Wärme, seine Kältemenge steht in keinem
+    # Zähler. Ohne ihn stand eine kühlende Anlage systematisch schlechter da als
+    # eine, die nicht kühlt.
+    # `None` = Altbestand oder älterer Client („unbekannt"); `0.0` = gemessen,
+    # es gab keinen Kühlbetrieb. Der Unterschied ist Absicht.
+    wp_strom_kuehlen_kwh: float | None = Field(None, ge=0)
 
     # E-Auto-KPIs
     eauto_ladung_gesamt_kwh: float | None = Field(None, ge=0)
@@ -170,7 +178,14 @@ class AnlageSubmitInput(BaseModel):
 
     # Ausstattung
     hat_waermepumpe: bool = False
-    wp_art: Literal["luft_wasser", "sole_wasser", "grundwasser", "luft_luft"] | None = None
+    wp_art: Literal[
+        "luft_wasser", "sole_wasser", "grundwasser", "luft_luft", "brauchwasser",
+    ] | None = None
+    # eedc W-14 / SOLL §4.1: Passiv gekühlte Anlagen (nur Umwälzpumpen) erreichen
+    # ein Vielfaches der Effizienz aktiv gekühlter. Ihre eigene Kennzahl ist
+    # korrekt — der **Vergleich** gegen aktiv gekühlte Anlagen wäre die
+    # Falschaussage, deshalb nimmt der Benchmark sie aus dem JAZ-Ranking.
+    kuehlung_art: Literal["keine", "aktiv", "passiv"] | None = None
     hat_eauto: bool = False
     hat_wallbox: bool = False
     hat_balkonkraftwerk: bool = False
@@ -180,7 +195,10 @@ class AnlageSubmitInput(BaseModel):
     wallbox_kw: float | None = Field(None, ge=0, le=50)  # Ladeleistung in kW
     bkw_wp: float | None = Field(None, ge=0, le=2000)  # BKW Leistung in Wp
     sonstiges_bezeichnung: str | None = Field(None, max_length=100)
-    wp_art: str | None = Field(None, max_length=20)  # luft_wasser, sole_wasser
+    # ⛔ Hier stand `wp_art` ein ZWEITES Mal, als `str | None`. In Pydantic
+    # gewinnt die spätere Deklaration — der `Literal`-Constraint oben war damit
+    # **wirkungslos**, jeder beliebige String bis 20 Zeichen ging durch. Entfernt
+    # 2026-08-26 beim Ergänzen von `brauchwasser`; ab jetzt greift die Prüfung.
 
     # Monatswerte
     monatswerte: list[MonatswertInput] = Field(..., min_length=1)
