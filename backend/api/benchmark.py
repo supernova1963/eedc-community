@@ -912,7 +912,17 @@ async def get_monats_benchmark(
             waerme = (mw.wp_heizwaerme_kwh or 0) + (mw.wp_warmwasser_kwh or 0)
             if waerme > 0:
                 wp_waerme_werte.append(waerme)
-                wp_jaz_werte.append(waerme / mw.wp_stromverbrauch_kwh)
+                # eedc ADR-002/P12: Die MENGEN oben zählen immer — sie sind
+                # additiv und richtig. Der QUOTIENT entsteht nur, wenn Zähler
+                # und Nenner dieselbe Abgrenzung tragen; das weiß der Client,
+                # nicht der Server. `is not False` heißt: NULL (Altbestand)
+                # zählt mit, unbekannt ist nicht unbelastbar.
+                #
+                # ⚠ Diese Stelle sieht wie reine Summierung aus — zwei
+                # getrennte Mengen-Listen — und die Division steht eine Zeile
+                # tiefer. Genau daran ist eine Erhebung schon vorbeigelaufen.
+                if mw.wp_jaz_belastbar is not False:
+                    wp_jaz_werte.append(waerme / mw.wp_stromverbrauch_kwh)
 
         # E-Auto
         if mw.eauto_ladung_gesamt_kwh is not None and mw.eauto_ladung_gesamt_kwh > 0:

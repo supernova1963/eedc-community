@@ -116,6 +116,31 @@ class MonatswertInput(BaseModel):
     wp_stromverbrauch_kwh: float | None = Field(None, ge=0)
     wp_heizwaerme_kwh: float | None = Field(None, ge=0)
     wp_warmwasser_kwh: float | None = Field(None, ge=0)
+    # ── eedc ADR-002/P12 (Client ab 2026-09-02) ──────────────────────────────
+    # **Darf aus diesem Monatswert eine Arbeitszahl gebildet werden?**
+    #
+    # Der JAZ hier ist `(Heizwärme + Warmwasser) / Stromverbrauch`. Diese Zahl
+    # gibt es **nur**, wenn Zähler und Nenner dieselbe Abgrenzung tragen —
+    # dasselbe Gerät, dieselbe Funktion, denselben Zeitraum. Der Server kann das
+    # nicht wissen: Er hat die Geräte nie gesehen, nur ihre Summen.
+    #
+    # `False` heißt: verschieden abgegrenzt. Der belegte Fall ist eine Anlage mit
+    # Wärmepumpe **und** Split-Klimaanlage — im Nenner der Strom beider Geräte,
+    # im Zähler die Wärme von einem. Angezeigt wurden **0,7**, während die
+    # Wärmepumpe selbst bei **2,2** lag; die Zahl beschreibt kein Gerät der
+    # Anlage, sie bewegt sich mit dem Betrieb des ungezählten Geräts. Eine
+    # Luft-Luft-Anlage hat bauartbedingt **keinen** Wärmemengenzähler, ihr Strom
+    # steht also dauerhaft ohne Gegenstück im Nenner.
+    #
+    # ⛔ **Es sperrt die KENNZAHL, nicht die MENGEN.** `wp_stromverbrauch_kwh`,
+    # `wp_heizwaerme_kwh` und `wp_warmwasser_kwh` sind auch dann richtig und
+    # additiv und gehen weiter in alle Mengen-Auswertungen ein. Wer das Feld als
+    # „Datensatz unbrauchbar" liest, deutet es um.
+    #
+    # ⚠ `None` = Altbestand oder älterer Client („unbekannt") und **zählt mit**:
+    # unbekannt ist nicht unbelastbar — dieselbe Regel wie bei `kuehlung_art`
+    # (16ebb46). Nur `False` nimmt den Wert aus den JAZ-Auswertungen.
+    wp_jaz_belastbar: bool | None = None
     # eedc W-14 (Client ab 2026-08-26): der Anteil von `wp_stromverbrauch_kwh`, der ins
     # **Kühlen** ging — eine **Teilmenge**, kein Summand. Er wird vom JAZ-Nenner
     # abgezogen: Kühlstrom erzeugt keine Wärme, seine Kältemenge steht in keinem

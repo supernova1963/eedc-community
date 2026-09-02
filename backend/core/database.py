@@ -86,5 +86,25 @@ async def run_migrations(conn):
                     connection.execute(text(
                         f"ALTER TABLE monatswerte ADD COLUMN {spalte} FLOAT"
                     ))
+            # 2026-09-02 (eedc ADR-002/P12): Darf aus diesem Monatswert eine
+            # Arbeitszahl gebildet werden? Der Client weiss es, der Server nicht
+            # — er hat die Geraete nie gesehen. `False` heisst: Zaehler und
+            # Nenner sind verschieden abgegrenzt (zwei Geraete auf einem
+            # Stromzaehler, Heizstab am Zaehler, gerechnete statt gemessener
+            # Waerme). Die MENGEN bleiben gueltig und werden weiter ausgewertet
+            # — gesperrt ist allein der Quotient.
+            #
+            # ⚠ NULL = Altbestand oder aelterer Client und **zaehlt mit**:
+            # unbekannt ist nicht unbelastbar. Dieselbe Regel wie bei
+            # `kuehlung_art` oben (16ebb46). Zum Zeitpunkt der Migration haben
+            # **alle 126 Anlagen** vor dem Feld submittet; NULL auszuschliessen
+            # liesse die Regionalwerte auf fast keine Anlage zusammenschrumpfen,
+            # und ein Vergleichswert aus zwei Anlagen ist keine bessere Auskunft
+            # als einer mit einem Ausreisser. Altbestand heilt beim naechsten
+            # Voll-Submit.
+            if "wp_jaz_belastbar" not in existing_mw:
+                connection.execute(text(
+                    "ALTER TABLE monatswerte ADD COLUMN wp_jaz_belastbar BOOLEAN"
+                ))
 
     await conn.run_sync(_run)

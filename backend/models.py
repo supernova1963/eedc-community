@@ -115,6 +115,12 @@ class Monatswert(Base):
     wp_stromverbrauch_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
     wp_heizwaerme_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
     wp_warmwasser_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # eedc ADR-002/P12: Darf aus diesem Monatswert eine Arbeitszahl gebildet
+    # werden? Eine Markierung, keine Menge — der Server rechnet damit nichts,
+    # er nimmt den Monatswert aus den JAZ-Auswertungen (nicht aus den Mengen).
+    # False = Zaehler und Nenner verschieden abgegrenzt. NULL = unbekannt und
+    # **zaehlt mit** (wie `kuehlung_art`): unbekannt ist nicht unbelastbar.
+    wp_jaz_belastbar: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     # eedc W-14: der Anteil von `wp_stromverbrauch_kwh`, der ins **Kühlen** ging.
     # Ohne ihn stünde er im Nenner des JAZ, während die Kältemenge im Zähler
     # fehlt — eine kühlende Anlage stünde systematisch schlechter da als eine,

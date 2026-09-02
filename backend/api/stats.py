@@ -186,6 +186,16 @@ async def get_regionen_statistiken(db: AsyncSession) -> list[RegionStatistik]:
         avg_speicher_entladung = round(sp[1], 1) if sp[1] else None
 
         # Performance: WP JAZ (Σ Wärme / Σ Strom)
+        #
+        # eedc ADR-002/P12: `wp_jaz_belastbar IS NOT FALSE` — Monatswerte, deren
+        # Zähler und Nenner verschieden abgegrenzt sind, gehören nicht in diesen
+        # Quotienten. Der Client weiß das, der Server sieht nur die Summen.
+        # ⚠ `isnot(False)` und NICHT `== True`: NULL ist Altbestand und **zählt
+        # mit** (unbekannt ist nicht unbelastbar, wie bei `kuehlung_art`). Zum
+        # Zeitpunkt der Einführung hatten **alle** Anlagen vor dem Feld
+        # submittet — `== True` hätte diese Zahl auf null Anlagen gestellt.
+        # ⛔ Die MENGEN daneben bleiben ungefiltert: sie sind additiv und
+        # richtig, gesperrt ist allein die Kennzahl.
         wp_result = await db.execute(
             select(
                 func.sum(Monatswert.wp_heizwaerme_kwh + func.coalesce(Monatswert.wp_warmwasser_kwh, 0)),
@@ -195,6 +205,7 @@ async def get_regionen_statistiken(db: AsyncSession) -> list[RegionStatistik]:
             .where(Anlage.region == row.region)
             .where(Monatswert.wp_stromverbrauch_kwh > 0)
             .where(Monatswert.wp_heizwaerme_kwh.isnot(None))
+            .where(Monatswert.wp_jaz_belastbar.isnot(False))
         )
         wp_row = wp_result.one()
         avg_wp_jaz = round(wp_row[0] / wp_row[1], 2) if wp_row[0] and wp_row[1] else None

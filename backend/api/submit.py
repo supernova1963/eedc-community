@@ -259,6 +259,7 @@ async def submit_anlage(
             existing.wp_warmwasser_kwh = mw.wp_warmwasser_kwh
             # eedc W-14: Teilmenge des WP-Stroms, die ins Kühlen ging.
             existing.wp_strom_kuehlen_kwh = mw.wp_strom_kuehlen_kwh
+            existing.wp_jaz_belastbar = mw.wp_jaz_belastbar
             # E-Auto
             existing.eauto_ladung_gesamt_kwh = mw.eauto_ladung_gesamt_kwh
             existing.eauto_ladung_pv_kwh = mw.eauto_ladung_pv_kwh
@@ -301,6 +302,7 @@ async def submit_anlage(
                 wp_heizwaerme_kwh=mw.wp_heizwaerme_kwh,
                 wp_warmwasser_kwh=mw.wp_warmwasser_kwh,
                 wp_strom_kuehlen_kwh=mw.wp_strom_kuehlen_kwh,
+                wp_jaz_belastbar=mw.wp_jaz_belastbar,
                 # E-Auto
                 eauto_ladung_gesamt_kwh=mw.eauto_ladung_gesamt_kwh,
                 eauto_ladung_pv_kwh=mw.eauto_ladung_pv_kwh,

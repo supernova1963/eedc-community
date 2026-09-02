@@ -339,6 +339,12 @@ async def get_wp_by_region(db: AsyncSession = Depends(get_db)):
                 )
                 .where(Monatswert.anlage_id == anlage.id)
                 .where(Monatswert.wp_stromverbrauch_kwh.isnot(None))
+                # eedc ADR-002/P12: unbelastbare Monatswerte gehören nicht in
+                # diese Anlagen-JAZ. Der Filter steht in der QUERY, nicht hinter
+                # der Summe — sonst mischte **ein** Monat mit verschieden
+                # abgegrenztem Zähler und Nenner die ganze Anlagenzahl.
+                # `isnot(False)`: NULL (Altbestand) zählt mit.
+                .where(Monatswert.wp_jaz_belastbar.isnot(False))
             )
             row = result.one()
 
@@ -403,6 +409,12 @@ async def get_wp_by_art(db: AsyncSession = Depends(get_db)):
                 )
                 .where(Monatswert.anlage_id == anlage.id)
                 .where(Monatswert.wp_stromverbrauch_kwh.isnot(None))
+                # eedc ADR-002/P12, wie oben — hier wiegt es zusätzlich, weil
+                # der Wert je `wp_art` gruppiert wird: Eine Anlage mit
+                # Wärmepumpe UND Split-Klimaanlage meldet nur die Bauart ihres
+                # ersten Geräts und stünde damit im Vergleichswert **reiner**
+                # Anlagen dieser Bauart.
+                .where(Monatswert.wp_jaz_belastbar.isnot(False))
             )
             row = result.one()
 

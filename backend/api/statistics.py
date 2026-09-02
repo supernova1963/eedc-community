@@ -677,6 +677,11 @@ async def _berechne_ranking_wert(db: AsyncSession, anlage, category: str) -> flo
             )
             .where(Monatswert.anlage_id == anlage.id)
             .where(Monatswert.wp_stromverbrauch_kwh.isnot(None))
+            # eedc ADR-002/P12: Diese Zahl geht in ein **Ranking** — eine
+            # Anlage, deren Zähler und Nenner verschieden abgegrenzt sind,
+            # stünde dort gegen Anlagen, deren Zahl dasselbe misst.
+            # `isnot(False)`: NULL (Altbestand) zählt mit.
+            .where(Monatswert.wp_jaz_belastbar.isnot(False))
         )
         row = result.one()
         strom = row[0] or 0
