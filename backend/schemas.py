@@ -36,7 +36,12 @@ class MonatswertInput(BaseModel):
       (also inkl. BHKW) plus Speicher-Entladung **und V2H**. Sie ist damit
       deckungsgleich mit dem, was der Anwender in eedc auf dem Bildschirm sieht,
       und **nicht** aus ``ertrag_kwh`` nachrechenbar, sobald ein weiterer
-      Erzeuger hinter demselben Zähler sitzt.
+      Erzeuger hinter demselben Zähler sitzt. **Seit eedc 05.09.2026 (Konzept
+      §9.2 „Abgabe an Dritte")** ist an Dritte abgegebene Energie (Mieterstrom,
+      Allgemeinstrom, gemessen am Übergabe-Zähler) **aus dem Eigenverbrauch
+      herausgerechnet** — sie ist weder Eigenverbrauch noch Netz-Einspeisung.
+      Kein neues Feld; ältere Datensätze solcher Anlagen tragen die Abgabe noch
+      im Eigenverbrauch (Autarkie und Quote dort zu hoch).
     - ``speicher_ladung_kwh`` / ``speicher_entladung_kwh`` — gemessen an der
       Stelle, die zur **Kopplung** des Speichers passt: bei AC-Kopplung
       hausseitig hinter dem Batterie-Wechselrichter, bei DC-Kopplung am
