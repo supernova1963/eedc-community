@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from core import get_db
+from core.wp_jaz import anlagen_filter, anlagen_jaz, durchschnitts_jaz
 from models import Anlage, Monatswert
 
 router = APIRouter(prefix="/components", tags=["Komponenten Deep-Dives"])
@@ -309,58 +310,38 @@ async def get_wp_by_region(db: AsyncSession = Depends(get_db)):
     Verwendet für:
     - Komponenten Tab: WP-Vergleich nach Region
     """
-    # Alle Anlagen mit Wärmepumpe, gruppiert nach Region
+    # Alle Regionen mit Wärmepumpe. ⚠ Die Zahl aus DIESER Gruppierung ist NICHT
+    # die Zahl, die neben dem Balken steht — sie zählt Besitzer, nicht Beiträge
+    # (s. `durchschnitts_jaz`). Sie dient hier nur der Regionen-Liste.
     result = await db.execute(
-        select(Anlage.region, func.count(Anlage.id).label("anzahl"))
-        .where(Anlage.hat_waermepumpe == True)
+        select(Anlage.region)
+        .where(Anlage.hat_waermepumpe == True)  # noqa: E712
         .group_by(Anlage.region)
-        .order_by(func.count(Anlage.id).desc())
     )
     regionen_raw = result.all()
 
     regionen = []
 
-    for region_code, anzahl in regionen_raw:
+    for (region_code,) in regionen_raw:
         # JAZ für diese Region berechnen
+        # ⭐ 06.09.2026 — EIN Rechenweg (`core/wp_jaz.py`). Hier stand bis dahin
+        # eine eigene Summen-Query, der **zwei** Bedingungen der Kachel-Formel
+        # fehlten: der Kühlstrom-Abzug (W-14) und der Ausschluss passiv
+        # gekühlter Anlagen (A5). Der Balken stand deshalb unter einer Kachel,
+        # die dieselbe Größe anders rechnete (rapahl, PN 92196).
         anlagen_result = await db.execute(
-            select(Anlage)
-            .where(Anlage.region == region_code)
-            .where(Anlage.hat_waermepumpe == True)
+            anlagen_filter().where(Anlage.region == region_code)
         )
-        anlagen = anlagen_result.scalars().all()
-
-        jaz_werte = []
-        for anlage in anlagen:
-            result = await db.execute(
-                select(
-                    func.sum(Monatswert.wp_stromverbrauch_kwh),
-                    func.sum(Monatswert.wp_heizwaerme_kwh),
-                    func.sum(Monatswert.wp_warmwasser_kwh),
-                )
-                .where(Monatswert.anlage_id == anlage.id)
-                .where(Monatswert.wp_stromverbrauch_kwh.isnot(None))
-                # eedc ADR-002/P12: unbelastbare Monatswerte gehören nicht in
-                # diese Anlagen-JAZ. Der Filter steht in der QUERY, nicht hinter
-                # der Summe — sonst mischte **ein** Monat mit verschieden
-                # abgegrenztem Zähler und Nenner die ganze Anlagenzahl.
-                # `isnot(False)`: NULL (Altbestand) zählt mit.
-                .where(Monatswert.wp_jaz_belastbar.isnot(False))
-            )
-            row = result.one()
-
-            strom = row[0] or 0
-            waerme = (row[1] or 0) + (row[2] or 0)
-
-            if strom > 0:
-                jaz = waerme / strom
-                jaz_werte.append(jaz)
+        anlage_ids = [row[0] for row in anlagen_result.all()]
+        schnitt, beitraege = await durchschnitts_jaz(db, anlage_ids)
 
         regionen.append(WPRegion(
             region=region_code,
-            anzahl=anzahl,
-            durchschnitt_jaz=round(sum(jaz_werte) / len(jaz_werte), 2) if jaz_werte else None,
+            anzahl=beitraege,
+            durchschnitt_jaz=round(schnitt, 2) if schnitt is not None else None,
         ))
 
+    regionen.sort(key=lambda r: r.anzahl, reverse=True)
     return WPByRegion(regionen=regionen)
 
 
@@ -383,14 +364,15 @@ async def get_wp_by_art(db: AsyncSession = Depends(get_db)):
 
     for wp_art, label in WP_ART_LABELS.items():
         # Anlagen mit dieser WP-Art
-        result = await db.execute(
-            select(Anlage)
-            .where(Anlage.hat_waermepumpe == True)
-            .where(Anlage.wp_art == wp_art)
-        )
-        anlagen = result.scalars().all()
+        # ⭐ 06.09.2026 — derselbe SoT wie Kachel und Regionalbalken.
+        # ⚠ Die P12-Begründung von hier bleibt gültig und wiegt bei dieser Sicht
+        # zusätzlich: Eine Anlage mit Wärmepumpe UND Split-Klimaanlage meldet
+        # nur die Bauart ihres ersten Geräts und stünde sonst im Vergleichswert
+        # **reiner** Anlagen dieser Bauart.
+        result = await db.execute(anlagen_filter(wp_art=wp_art))
+        anlage_ids = [row[0] for row in result.all()]
 
-        if not anlagen:
+        if not anlage_ids:
             arten.append(WPArtStats(
                 wp_art=wp_art,
                 label=label,
@@ -399,36 +381,12 @@ async def get_wp_by_art(db: AsyncSession = Depends(get_db)):
             ))
             continue
 
-        jaz_werte = []
-        for anlage in anlagen:
-            result = await db.execute(
-                select(
-                    func.sum(Monatswert.wp_stromverbrauch_kwh),
-                    func.sum(Monatswert.wp_heizwaerme_kwh),
-                    func.sum(Monatswert.wp_warmwasser_kwh),
-                )
-                .where(Monatswert.anlage_id == anlage.id)
-                .where(Monatswert.wp_stromverbrauch_kwh.isnot(None))
-                # eedc ADR-002/P12, wie oben — hier wiegt es zusätzlich, weil
-                # der Wert je `wp_art` gruppiert wird: Eine Anlage mit
-                # Wärmepumpe UND Split-Klimaanlage meldet nur die Bauart ihres
-                # ersten Geräts und stünde damit im Vergleichswert **reiner**
-                # Anlagen dieser Bauart.
-                .where(Monatswert.wp_jaz_belastbar.isnot(False))
-            )
-            row = result.one()
-
-            strom = row[0] or 0
-            waerme = (row[1] or 0) + (row[2] or 0)
-
-            if strom > 0:
-                jaz_werte.append(waerme / strom)
-
+        schnitt, beitraege = await durchschnitts_jaz(db, anlage_ids)
         arten.append(WPArtStats(
             wp_art=wp_art,
             label=label,
-            anzahl=len(anlagen),
-            durchschnitt_jaz=round(sum(jaz_werte) / len(jaz_werte), 2) if jaz_werte else None,
+            anzahl=beitraege,
+            durchschnitt_jaz=round(schnitt, 2) if schnitt is not None else None,
         ))
 
     return WPByArt(arten=arten)

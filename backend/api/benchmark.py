@@ -10,6 +10,7 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import get_db
+from core.wp_jaz import anlagen_filter, anlagen_jaz, durchschnitts_jaz
 from models import Anlage, Monatswert
 from schemas import (
     AnlageOutput, MonatswertOutput, BenchmarkData,
@@ -195,9 +196,20 @@ async def berechne_wp_kpis(
         return None
 
     waerme_gesamt = heiz + ww
-    # W-14: der Nenner ist der Strom, der zu DIESER Wärme gehört.
-    strom_waerme = strom - kuehl
-    jaz = waerme_gesamt / strom_waerme if strom_waerme > 0 else None
+    # ⭐ 06.09.2026 — die KENNZAHL kommt aus dem SoT (`core/wp_jaz.py`), die
+    # MENGEN aus der Query darueber (E1 — Mengen summiert, Kennzahlen getrennt).
+    # Der Unterschied ist der P12-Filter: er darf die Arbeitszahl sperren, aber
+    # nie eine gemessene Kilowattstunde aus einer Mengen-Auswertung nehmen.
+    #
+    # ⛔ Warum der eigene Wert dieselbe Formel braucht wie der Vergleichswert:
+    # Sonst steht in der Kachel „dein 3,6 gegen Ø 4,45", und die zwei Zahlen
+    # sind nach verschiedenen Regeln entstanden — genau der Befund, aus dem
+    # dieses Modul hervorgegangen ist (rapahl, PN 92196).
+    jaz = await anlagen_jaz(
+        db, anlage_id,
+        von_jahr=von_jahr, von_monat=von_monat,
+        bis_jahr=bis_jahr, bis_monat=bis_monat,
+    )
 
     return {
         # `stromverbrauch` bleibt der GESAMTE Verbrauch — er ist eine Menge und
@@ -271,26 +283,17 @@ async def berechne_community_avg_jaz(db: AsyncSession, wp_art: str | None = None
     denselben Durchschnitt zu werfen. ``NULL`` (Altbestand) zählt mit: unbekannt
     ist nicht passiv.
     """
-    # Hole alle Anlagen mit WP (optional gefiltert nach Art)
-    query = select(Anlage.id).where(
-        Anlage.hat_waermepumpe == True,
-        (Anlage.kuehlung_art.is_(None)) | (Anlage.kuehlung_art != "passiv"),
-    )
-    if wp_art:
-        query = query.where(Anlage.wp_art == wp_art)
-    result = await db.execute(query)
+    # ⭐ 06.09.2026 — EIN Rechenweg fuer alle Vergleichswerte (`core/wp_jaz.py`).
+    # Hier stand bis dahin eine eigene Anlagen-Auswahl plus eine Schleife ueber
+    # `berechne_wp_kpis`, die den **P12-Filter nicht kannte**: ein Monat mit
+    # verschieden abgegrenztem Zaehler und Nenner ging in den Vergleichswert
+    # ein, obwohl der Client ihn ausdruecklich als nicht belastbar meldet.
+    result = await db.execute(anlagen_filter(wp_art=wp_art))
     anlage_ids = [row[0] for row in result.all()]
-
     if not anlage_ids:
         return None
-
-    jaz_values = []
-    for aid in anlage_ids:
-        wp = await berechne_wp_kpis(db, aid, 2020, 1, 2099, 12)
-        if wp and wp.get("jaz"):
-            jaz_values.append(wp["jaz"])
-
-    return sum(jaz_values) / len(jaz_values) if jaz_values else None
+    schnitt, _ = await durchschnitts_jaz(db, anlage_ids)
+    return schnitt
 
 
 async def berechne_community_avg_pv_anteil_eauto(db: AsyncSession) -> float | None:

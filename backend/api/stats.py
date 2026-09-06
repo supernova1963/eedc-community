@@ -196,19 +196,34 @@ async def get_regionen_statistiken(db: AsyncSession) -> list[RegionStatistik]:
         # submittet — `== True` hätte diese Zahl auf null Anlagen gestellt.
         # ⛔ Die MENGEN daneben bleiben ungefiltert: sie sind additiv und
         # richtig, gesperrt ist allein die Kennzahl.
+        # ⭐ 06.09.2026 — die zwei fehlenden Bedingungen ergaenzt, die Form NICHT
+        # geaendert. Dieser Wert ist **energiegewichtet** (Σ Waerme / Σ Strom
+        # ueber alle Monate der Region) und damit eine andere Groesse als der
+        # Vergleichswert in `core/wp_jaz.py`, der die Anlagen-JAZ ungewichtet
+        # mittelt. Ihn auf den SoT zu heben, hiesse seine Bedeutung zu aendern —
+        # das ist eine Entscheidung, keine Reparatur, und sie steht aus.
+        # Was hier fehlte und ohne Bedeutungsaenderung nachzuholen war:
+        #   • **W-14** — der Kuehlstrom gehoert nicht in den Nenner.
+        #   • **A5** — passiv gekuehlte Anlagen zaehlen nicht in einen
+        #     gemeinsamen Durchschnitt (`kuehlung_art IS NULL` ist Altbestand
+        #     und zaehlt mit: unbekannt ist nicht passiv).
         wp_result = await db.execute(
             select(
                 func.sum(Monatswert.wp_heizwaerme_kwh + func.coalesce(Monatswert.wp_warmwasser_kwh, 0)),
-                func.sum(Monatswert.wp_stromverbrauch_kwh),
+                func.sum(
+                    Monatswert.wp_stromverbrauch_kwh
+                    - func.coalesce(Monatswert.wp_strom_kuehlen_kwh, 0)
+                ),
             )
             .join(Anlage)
             .where(Anlage.region == row.region)
+            .where((Anlage.kuehlung_art.is_(None)) | (Anlage.kuehlung_art != "passiv"))
             .where(Monatswert.wp_stromverbrauch_kwh > 0)
             .where(Monatswert.wp_heizwaerme_kwh.isnot(None))
             .where(Monatswert.wp_jaz_belastbar.isnot(False))
         )
         wp_row = wp_result.one()
-        avg_wp_jaz = round(wp_row[0] / wp_row[1], 2) if wp_row[0] and wp_row[1] else None
+        avg_wp_jaz = round(wp_row[0] / wp_row[1], 2) if wp_row[0] and wp_row[1] and wp_row[1] > 0 else None
 
         # Performance: E-Auto km + kWh zuhause geladen (gesamt − extern)
         eauto_result = await db.execute(

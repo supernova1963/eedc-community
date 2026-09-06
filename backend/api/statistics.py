@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from statistics import median, stdev
 
 from core import get_db
+from core.wp_jaz import anlagen_jaz
 from models import Anlage, Monatswert
 from schemas import (
     GlobaleStatistik,
@@ -669,26 +670,19 @@ async def _berechne_ranking_wert(db: AsyncSession, anlage, category: str) -> flo
         if not anlage.hat_waermepumpe:
             return None
 
-        result = await db.execute(
-            select(
-                func.sum(Monatswert.wp_stromverbrauch_kwh),
-                func.sum(Monatswert.wp_heizwaerme_kwh),
-                func.sum(Monatswert.wp_warmwasser_kwh),
-            )
-            .where(Monatswert.anlage_id == anlage.id)
-            .where(Monatswert.wp_stromverbrauch_kwh.isnot(None))
-            # eedc ADR-002/P12: Diese Zahl geht in ein **Ranking** — eine
-            # Anlage, deren Zähler und Nenner verschieden abgegrenzt sind,
-            # stünde dort gegen Anlagen, deren Zahl dasselbe misst.
-            # `isnot(False)`: NULL (Altbestand) zählt mit.
-            .where(Monatswert.wp_jaz_belastbar.isnot(False))
-        )
-        row = result.one()
-        strom = row[0] or 0
-        waerme = (row[1] or 0) + (row[2] or 0)
-        if strom > 0:
-            return waerme / strom
-        return None
+        # ⭐ 06.09.2026 — dieselbe Groesse wie jeder andere Vergleichswert, also
+        # derselbe SoT (`core/wp_jaz.py`). Hier stand bis dahin eine eigene
+        # Summen-Query; sie trug den P12-Filter (Kommentar unten, weiter
+        # gueltig), aber **nicht** den Kuehlstrom-Abzug (W-14). In einem
+        # RANKING wiegt das doppelt: Wer kuehlt, hatte diesen Strom im Nenner,
+        # ohne dass die Kaeltemenge irgendwo im Zaehler steht — er stand damit
+        # systematisch weiter hinten als jemand, der nicht kuehlt.
+        #
+        # eedc ADR-002/P12 (die Begruendung von hier, unveraendert gueltig):
+        # Diese Zahl geht in ein **Ranking** — eine Anlage, deren Zaehler und
+        # Nenner verschieden abgegrenzt sind, stuende dort gegen Anlagen, deren
+        # Zahl dasselbe misst.
+        return await anlagen_jaz(db, anlage.id)
 
     elif category == "eauto_pv_anteil":
         if not anlage.hat_eauto:
