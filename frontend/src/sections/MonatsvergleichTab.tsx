@@ -172,7 +172,13 @@ export default function MonatsvergleichTab() {
 
             {(daten.wp_jaz || daten.wp_stromverbrauch || daten.wp_waerme) && (
               <KPISection title="Wärmepumpe">
-                {daten.wp_jaz && <KPIBlock label="JAZ" kpi={daten.wp_jaz} unit="" decimals={2} />}
+                {/* ⛔ Hier stand bis zum 07.09.2026 „JAZ". Diese Sicht vergleicht EINEN
+                    Monat (`/api/benchmark/monat/{jahr}/{monat}`) — eine Jahresarbeitszahl
+                    ist das nicht. Regel: eedc-SOLL Wärme/Klima §4.1, „Der Name der
+                    Kennzahl nennt ihren Zeitraum". Dieselbe Zahl unter demselben Namen
+                    für drei Zeiträume auszuweisen lädt zum Vergleichen von Dingen ein,
+                    die nicht vergleichbar sind. */}
+                {daten.wp_jaz && <KPIBlock label="Arbeitszahl (Monat)" kpi={daten.wp_jaz} unit="" decimals={2} />}
                 {daten.wp_stromverbrauch && <KPIBlock label="Strom" kpi={daten.wp_stromverbrauch} unit="kWh" decimals={0} />}
                 {daten.wp_waerme && <KPIBlock label="Wärme" kpi={daten.wp_waerme} unit="kWh" decimals={0} />}
               </KPISection>

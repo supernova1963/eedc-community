@@ -571,6 +571,26 @@ RANKING_CONFIG = {
 }
 
 
+
+#: Der Zeitraum, den die Ranglisten tatsächlich rechnen.
+#:
+#: ⛔ Hier stand bis zum 07.09.2026 pauschal `"12_monate"` — in JEDER Antwort, für
+#: JEDE Kategorie. Nachgemessen: Im gesamten Ranking-Zweig von `_berechne_ranking`
+#: steht **kein einziger Zeitfilter**. Spez. Ertrag, Autarkie, Speicher-Effizienz,
+#: JAZ und E-Auto-PV-Anteil rechnen über die **komplette Historie** jeder Anlage.
+#: Eine Anlage mit vier Jahren Daten stand damit gegen eine mit vier Monaten, und
+#: beide unter derselben Zeitraum-Angabe.
+#:
+#: ⚑ Das Feld hat heute keinen Konsumenten — es steht aber in der öffentlichen API,
+#: und eine Angabe, die niemand liest, ist trotzdem eine Aussage. Sie sagt jetzt die
+#: Wahrheit, statt eine Periode zu behaupten, die es nicht gibt.
+#:
+#: ⚠ **Das ist NICHT die Lösung, sondern ihre ehrliche Zwischenstufe.** Der
+#: periodenbezogene Rang (Monat/Jahr) ist eigener Gegenstand — eedc-homeassistant
+#: Issue #338; dort ist dieser Befund als Korrektur der Ausgangslage vermerkt.
+RANKING_ZEITRAUM = "gesamter_zeitraum"
+
+
 @router.get("/rankings/{category}", response_model=Ranking)
 async def get_ranking(
     category: str,
@@ -591,7 +611,7 @@ async def get_ranking(
             category=category,
             label=category,
             einheit="",
-            zeitraum="12_monate",
+            zeitraum=RANKING_ZEITRAUM,
             ranking=[],
         )
 
@@ -625,7 +645,7 @@ async def get_ranking(
         category=category,
         label=config["label"],
         einheit=config["einheit"],
-        zeitraum="12_monate",
+        zeitraum=RANKING_ZEITRAUM,
         ranking=top_entries,
         eigener_rang=eigener_rang,
         eigener_wert=round(eigener_wert, 1) if eigener_wert else None,
