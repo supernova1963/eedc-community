@@ -451,7 +451,19 @@ class RegionStatistik(BaseModel):
     # Performance-Durchschnitte (nur Anlagen mit dem jeweiligen Gerät)
     avg_speicher_ladung_kwh: float | None = None       # Ø Ladung pro Monat
     avg_speicher_entladung_kwh: float | None = None    # Ø Entladung pro Monat
-    avg_wp_jaz: float | None = None                    # Ø berechnete JAZ (Σ Wärme / Σ Strom)
+    #: **Energiegewichtet**: Σ Wärme ÷ Σ Strom über alle Monatszeilen der Region.
+    #: ⛔ Das ist **keine** Arbeitszahl je Anlage — Zähler und Nenner stammen aus
+    #: verschiedenen Anlagen (eedc-SOLL Wärme/Klima R2). Die Anzeige nennt den
+    #: Wert deshalb „Wärme je kWh Strom", nicht „JAZ". Der ungewichtete
+    #: Vergleichswert („die typische Anlage") steht in
+    #: `/api/components/waermepumpe/by-region` und ist eine ANDERE Größe —
+    #: beide bleiben nebeneinander bestehen (Entscheid Maintainer 07.09.2026).
+    #: Der Feldname bleibt, weil ihn drei Stellen im eedc-Add-on lesen.
+    avg_wp_jaz: float | None = None
+    #: Die Zahl der Anlagen HINTER `avg_wp_jaz` — nicht `anzahl_anlagen`, das
+    #: alle Anlagen der Region zählt. Zwei Zahlen nebeneinander sind nur lesbar,
+    #: wenn jede ihre Grundgesamtheit nennt.
+    wp_jaz_anzahl: int | None = None
     avg_eauto_km: float | None = None                  # Ø km pro Monat
     avg_eauto_ladung_kwh: float | None = None          # Ø kWh zuhause geladen (gesamt − extern)
     avg_wallbox_kwh: float | None = None               # Ø kWh geladen pro Monat
@@ -651,6 +663,17 @@ class CommunityGesamtwerte(BaseModel):
 
     # Wärmepumpe
     wp_anzahl: int
+    #: **Wärme je kWh Strom** über die Community — der Quotient neben den
+    #: Mengen, mit den drei Bedingungen (P12 · W-14 · A5) und der
+    #: Plausibilitätsgrenze gebildet.
+    #: ⛔ **Nicht „JAZ"**: Zähler und Nenner stammen aus verschiedenen Anlagen
+    #: (eedc-SOLL Wärme/Klima R2), und er ist **nicht** der Quotient der zwei
+    #: Mengenfelder daneben — die bleiben ungefiltert (E1). Bis zum 07.09.2026
+    #: rechnete der Client ihn selbst, ohne jede Bedingung.
+    wp_waerme_je_kwh_strom: float | None = None
+    #: Die Zahl der Anlagen hinter `wp_waerme_je_kwh_strom` — nicht `wp_anzahl`,
+    #: das die Besitzer einer Wärmepumpe zählt.
+    wp_quotient_anzahl: int | None = None
     wp_stromverbrauch_kwh: float
     wp_waerme_kwh: float  # heizwaerme + warmwasser
 

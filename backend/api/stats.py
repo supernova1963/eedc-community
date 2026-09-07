@@ -17,6 +17,7 @@ from schemas import (
     VerfuegbareMonate,
     VerfuegbarerMonat,
 )
+from core.wp_jaz import MONATS_ARBEITSZAHL_MAX
 from .aggregations import compute_speicher_stats
 
 router = APIRouter(prefix="/stats", tags=["Statistiken"])
@@ -196,34 +197,64 @@ async def get_regionen_statistiken(db: AsyncSession) -> list[RegionStatistik]:
         # submittet — `== True` hätte diese Zahl auf null Anlagen gestellt.
         # ⛔ Die MENGEN daneben bleiben ungefiltert: sie sind additiv und
         # richtig, gesperrt ist allein die Kennzahl.
-        # ⭐ 06.09.2026 — die zwei fehlenden Bedingungen ergaenzt, die Form NICHT
-        # geaendert. Dieser Wert ist **energiegewichtet** (Σ Waerme / Σ Strom
-        # ueber alle Monate der Region) und damit eine andere Groesse als der
-        # Vergleichswert in `core/wp_jaz.py`, der die Anlagen-JAZ ungewichtet
-        # mittelt. Ihn auf den SoT zu heben, hiesse seine Bedeutung zu aendern —
-        # das ist eine Entscheidung, keine Reparatur, und sie steht aus.
-        # Was hier fehlte und ohne Bedeutungsaenderung nachzuholen war:
-        #   • **W-14** — der Kuehlstrom gehoert nicht in den Nenner.
-        #   • **A5** — passiv gekuehlte Anlagen zaehlen nicht in einen
-        #     gemeinsamen Durchschnitt (`kuehlung_art IS NULL` ist Altbestand
-        #     und zaehlt mit: unbekannt ist nicht passiv).
+        # ⭐ 06.09.2026 — W-14 und A5 ergaenzt, die Form NICHT geaendert.
+        # ⭐ 07.09.2026 (Paket b, Entscheid Maintainer **(c)**) — die Form bleibt
+        #   endgueltig: Dieser Wert ist **energiegewichtet** (Σ Waerme / Σ Strom
+        #   ueber alle Monatszeilen der Region) und beantwortet damit eine ANDERE
+        #   Frage als `core/wp_jaz.py::durchschnitts_jaz`, das die Anlagen-JAZ
+        #   ungewichtet mittelt:
+        #     energiegewichtet → „wie viel Waerme bringt die Region je kWh Strom"
+        #     ungewichtet      → „wie gut ist die typische Anlage"
+        #   Beide Fragen sind legitim; **(c)** laesst beide stehen und verlangt
+        #   dafuer, dass jede Zahl ihre Grundgesamtheit nennt.
+        #
+        # ⛔ **Deshalb heisst dieser Wert nicht „JAZ".** Ein Σ Q / Σ E ueber
+        #   mehrere Anlagen ist ein Quotient, dessen Zaehler und Nenner nicht
+        #   dasselbe Geraet haben (eedc-SOLL Waerme/Klima **R2**) — er darf keine
+        #   Kennzahl je Anlage behaupten. Die Anzeige nennt ihn
+        #   „Waerme je kWh Strom"; der Feldname `avg_wp_jaz` bleibt, weil ihn
+        #   drei Stellen im Add-on lesen und ein Umbenennen nur Vertrag kostet.
+        #
+        # ⭐ **Was am 07.09. dazukam, und warum:**
+        #   • **n** (`wp_jaz_anzahl`) — die Zahl der Anlagen HINTER dem Wert.
+        #     Unter (c) stehen zwei Zahlen je Region nebeneinander; ohne ihre
+        #     Grundgesamtheiten sind sie nicht lesbar. `anzahl_anlagen` daneben
+        #     zaehlt ALLE Anlagen der Region und taugt dafuer nicht.
+        #   • **`(heiz + ww) > 0` statt `heizwaerme IS NOT NULL`** — der alte
+        #     Filter verwarf jeden **Warmwasser-only-Monat** (Sommer), obwohl
+        #     dort Waerme gemessen ist. Das machte die Zahl zu einer
+        #     Heiz-Zahl und hob sie an (WW traegt die niedrigere Arbeitszahl).
+        #     Live belegt am 07.09.: **HE** hatte hier gar keinen Wert, waehrend
+        #     `by-region` 0,98 zeigte — dort stehen nur WW-Zeilen.
+        #   • **Plausibilitaetsgrenze je Zeile** — dieselbe wie im SoT.
+        #     Ohne sie stand fuer **SN** eine „JAZ" von **13,67**: alle bisherigen
+        #     Filter passiert, physikalisch unmoeglich (SOLL §3.2b Fall A7,
+        #     bivalenter Heizkreis).
+        _wp_waerme = func.coalesce(Monatswert.wp_heizwaerme_kwh, 0) + func.coalesce(
+            Monatswert.wp_warmwasser_kwh, 0
+        )
+        _wp_strom_waerme = func.coalesce(
+            Monatswert.wp_stromverbrauch_kwh, 0
+        ) - func.coalesce(Monatswert.wp_strom_kuehlen_kwh, 0)
         wp_result = await db.execute(
             select(
-                func.sum(Monatswert.wp_heizwaerme_kwh + func.coalesce(Monatswert.wp_warmwasser_kwh, 0)),
-                func.sum(
-                    Monatswert.wp_stromverbrauch_kwh
-                    - func.coalesce(Monatswert.wp_strom_kuehlen_kwh, 0)
-                ),
+                func.sum(_wp_waerme),
+                func.sum(_wp_strom_waerme),
+                func.count(distinct(Monatswert.anlage_id)),
             )
             .join(Anlage)
             .where(Anlage.region == row.region)
             .where((Anlage.kuehlung_art.is_(None)) | (Anlage.kuehlung_art != "passiv"))
             .where(Monatswert.wp_stromverbrauch_kwh > 0)
-            .where(Monatswert.wp_heizwaerme_kwh.isnot(None))
+            .where(_wp_waerme > 0)
             .where(Monatswert.wp_jaz_belastbar.isnot(False))
+            .where(_wp_waerme <= MONATS_ARBEITSZAHL_MAX * _wp_strom_waerme)
         )
         wp_row = wp_result.one()
         avg_wp_jaz = round(wp_row[0] / wp_row[1], 2) if wp_row[0] and wp_row[1] and wp_row[1] > 0 else None
+        # Die Zahl steht nur, wenn auch der Wert steht — sonst behauptete ein
+        # „(3 Anlagen)" eine Aussage, die daneben gar nicht getroffen wird.
+        wp_jaz_anzahl = int(wp_row[2] or 0) if avg_wp_jaz is not None else None
 
         # Performance: E-Auto km + kWh zuhause geladen (gesamt − extern)
         eauto_result = await db.execute(
@@ -287,6 +318,7 @@ async def get_regionen_statistiken(db: AsyncSession) -> list[RegionStatistik]:
             avg_speicher_ladung_kwh=avg_speicher_ladung,
             avg_speicher_entladung_kwh=avg_speicher_entladung,
             avg_wp_jaz=avg_wp_jaz,
+            wp_jaz_anzahl=wp_jaz_anzahl,
             avg_eauto_km=avg_eauto_km,
             avg_eauto_ladung_kwh=avg_eauto_ladung,
             avg_wallbox_kwh=avg_wallbox_kwh,

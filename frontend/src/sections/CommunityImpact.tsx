@@ -137,10 +137,28 @@ export default function CommunityImpact({ totals }: { totals: CommunityGesamtwer
                   <span className="text-sm text-gray-600 dark:text-gray-400">Strom eingesetzt</span>
                   <span className="font-semibold text-gray-900 dark:text-white">{fmtEnergyStr(totals.wp_stromverbrauch_kwh)}</span>
                 </div>
-                {totals.wp_stromverbrauch_kwh > 0 && (
+                {/* Die Kennzahl kommt vom Server (07.09.2026) — sie trägt die
+                    drei Bedingungen (belastbar · Kühlstrom raus · nicht passiv)
+                    und eine Plausibilitätsgrenze. Vorher stand hier
+                    `wp_waerme_kwh / wp_stromverbrauch_kwh` und hieß „Ø JAZ":
+                    ein Quotient aus zwei ungefilterten Summen, benannt wie eine
+                    Arbeitszahl je Anlage.
+                    ⚠ Er ist bewusst NICHT der Quotient der zwei Zeilen darüber
+                    — die sind Mengen und bleiben ungefiltert. Deshalb steht die
+                    Zahl der Anlagen daneben, aus denen er entstanden ist. */}
+                {totals.wp_waerme_je_kwh_strom != null && (
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">Ø JAZ</span>
-                    <span className="font-semibold text-gray-900 dark:text-white">{(totals.wp_waerme_kwh / totals.wp_stromverbrauch_kwh).toFixed(1)}</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">
+                      Wärme je kWh Strom
+                      {totals.wp_quotient_anzahl != null && (
+                        <span className="text-gray-500 dark:text-gray-500">
+                          {' '}(aus {totals.wp_quotient_anzahl} Anlagen)
+                        </span>
+                      )}
+                    </span>
+                    <span className="font-semibold text-gray-900 dark:text-white">
+                      {totals.wp_waerme_je_kwh_strom.toFixed(1)} kWh
+                    </span>
                   </div>
                 )}
               </div>

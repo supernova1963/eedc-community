@@ -10,7 +10,12 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import get_db
-from core.wp_jaz import anlagen_filter, anlagen_jaz, durchschnitts_jaz
+from core.wp_jaz import (
+    MONATS_ARBEITSZAHL_MAX,
+    anlagen_filter,
+    anlagen_jaz,
+    durchschnitts_jaz,
+)
 from models import Anlage, Monatswert
 from schemas import (
     AnlageOutput, MonatswertOutput, BenchmarkData,
@@ -924,8 +929,33 @@ async def get_monats_benchmark(
                 # ⚠ Diese Stelle sieht wie reine Summierung aus — zwei
                 # getrennte Mengen-Listen — und die Division steht eine Zeile
                 # tiefer. Genau daran ist eine Erhebung schon vorbeigelaufen.
-                if mw.wp_jaz_belastbar is not False:
-                    wp_jaz_werte.append(waerme / mw.wp_stromverbrauch_kwh)
+                # ⛔ HIER FEHLTEN BIS ZUM 07.09.2026 ZWEI DER VIER BEDINGUNGEN.
+                # `85c75a2` (06.09.) hat vier der fünf JAZ-Stellen auf den SoT
+                # gehoben — diese nicht: sein Diff berührt in dieser Datei nur
+                # `berechne_wp_kpis` (~196) und `berechne_community_avg_jaz`
+                # (~283). Der P12-Kommentar darüber handelt von P12 und sagt
+                # nichts über W-14 und A5; wer ihn liest, hält die Stelle
+                # trotzdem für erledigt. *Ein Kommentar ist eine Behauptung
+                # über die Stelle, an der er steht, nicht über die Regel, die
+                # man sucht.*
+                #
+                # W-14 — der Kühlstrom gehört nicht in den Nenner. A5 — passiv
+                # gekühlte Anlagen zählen nicht in einen gemeinsamen Schnitt.
+                # Dazu die Plausibilitätsgrenze desselben SoT: eine Zeile über
+                # `MONATS_ARBEITSZAHL_MAX` behauptet mehr, als eine Wärmepumpe
+                # kann (SOLL §3.2b Fall A7 — bivalenter Heizkreis).
+                strom_waerme = mw.wp_stromverbrauch_kwh - min(
+                    max(mw.wp_strom_kuehlen_kwh or 0, 0),
+                    mw.wp_stromverbrauch_kwh,
+                )
+                passiv = anlage.kuehlung_art == "passiv"
+                if (
+                    mw.wp_jaz_belastbar is not False
+                    and not passiv
+                    and strom_waerme > 0
+                    and waerme <= MONATS_ARBEITSZAHL_MAX * strom_waerme
+                ):
+                    wp_jaz_werte.append(waerme / strom_waerme)
 
         # E-Auto
         if mw.eauto_ladung_gesamt_kwh is not None and mw.eauto_ladung_gesamt_kwh > 0:

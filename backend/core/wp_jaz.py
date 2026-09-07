@@ -53,6 +53,40 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models import Anlage, Monatswert
 
 
+#: Obergrenze der **Monats**-Arbeitszahl, ab der eine Zeile keine Kennzahl mehr
+#: trägt (07.09.2026, Paket b Schritt 6).
+#:
+#: **Warum es sie braucht.** Am 07.09. stand in der Regionalkarte des Add-ons
+#: für Sachsen eine „JAZ" von **13,67**, und im Anlagen-Ranking eine **13,8** —
+#: beide Werte passieren P12, W-14 und A5 vollständig. Eine Jahresarbeitszahl
+#: von 13 gibt es nicht; eine gute Sole-Wasser-Anlage erreicht rund 5.
+#:
+#: **Was die Ursache ist, sagt das eedc-SOLL Wärme/Klima §3.2b, Fall A7:**
+#: „Bivalent: Gaskessel speist denselben Heizkreis, sein Strom fehlt — Q zu groß
+#: ⇒ Zahl zu hoch." Ein Wärmemengenzähler hinter Kessel **und** Wärmepumpe misst
+#: die Wärme beider und teilt sie durch den Strom einer. Der Server kann das
+#: nicht auflösen — er hat die Geräte nie gesehen. Er kann nur aufhören, die
+#: Zahl zu behaupten.
+#:
+#: ⚠ **Die Grenze sitzt auf der MONATSZEILE, nicht auf dem Jahreswert.** Eine
+#: Monats-Arbeitszahl streut stärker: Sole-Wasser im Übergangsmonat kann legitim
+#: über 6 liegen, ein Warmwasser-only-Sommermonat legitim bei 2. Deshalb ist der
+#: Wert bewusst hoch gesetzt — er soll das Unmögliche sperren, nicht das
+#: Ungewöhnliche.
+#:
+#: ⚑ **Kalibrierung, und ihre Grenze:** Am 07.09. über die öffentliche API
+#: gemessen — von 43 beitragenden Anlagen liegt **eine** über 10 und **zwei**
+#: über 8; über 6 sind es fünf, weshalb 6 als Grenze gute Anlagen träfe. Die
+#: Verteilung der **Monatszeilen** ist damit NICHT gemessen (sie ist von außen
+#: nicht sichtbar). Wer sie messen kann, kalibriert nach.
+MONATS_ARBEITSZAHL_MAX: float = 10.0
+
+#: Ab hier ist eine Monats-Arbeitszahl auffällig, aber nicht unmöglich — der
+#: Wert gehört NICHT hierher, sondern in den Daten-Checker des Add-ons, der das
+#: Gerät kennt. Er steht hier nur als benannter Bezugspunkt.
+MONATS_ARBEITSZAHL_AUFFAELLIG: float = 7.0
+
+
 def anlagen_filter(*, wp_art: str | None = None):
     """Das Anlagen-Prädikat für jeden JAZ-Vergleichswert.
 
@@ -80,8 +114,19 @@ async def anlagen_jaz(
 ) -> float | None:
     """Die Arbeitszahl EINER Anlage über einen Zeitraum — oder ``None``.
 
-    ``None`` heißt „nicht bildbar" und ist keine 0: kein Strom erfasst, keine
-    belastbaren Monate, oder der ganze Strom ging ins Kühlen.
+    ``None`` heißt „nicht bildbar" und ist keine 0. Die Gründe, in der
+    Reihenfolge der Prädikate unten:
+
+    * kein Strom erfasst;
+    * keine belastbaren Monate (**P12**);
+    * jede Zeile über der Plausibilitätsgrenze (**`MONATS_ARBEITSZAHL_MAX`**);
+    * keine Zeile mit Wärme (**Zeitraum**, SOLL §4.2 Fall 3);
+    * der ganze Strom ging ins Kühlen (**W-14**).
+
+    ⛔ **Alle Prädikate sperren die KENNZAHL, nie die MENGE** (E1). Strom-,
+    Heiz- und Warmwassersummen laufen über eigene Queries und bleiben
+    vollständig — eine Zeile, die hier ausgeschlossen wird, zählt in jeder
+    Mengen-Auswertung unverändert mit.
     """
     result = await db.execute(
         select(
@@ -103,6 +148,39 @@ async def anlagen_jaz(
         # mischte EIN Monat mit verschieden abgegrenztem Zähler und Nenner die
         # ganze Anlagenzahl.
         .where(Monatswert.wp_jaz_belastbar.isnot(False))
+        # ── Zwei weitere Zeilenprädikate, aus derselben Überlegung (07.09.2026) ──
+        #
+        # (1) PLAUSIBILITÄT: eine Zeile, deren eigene Arbeitszahl über
+        #     `MONATS_ARBEITSZAHL_MAX` liegt, trägt keine Kennzahl. Als
+        #     Ungleichung statt als Division formuliert — so bleibt es EINE
+        #     Query, und die Division durch null stellt sich nicht.
+        .where(
+            (
+                func.coalesce(Monatswert.wp_heizwaerme_kwh, 0)
+                + func.coalesce(Monatswert.wp_warmwasser_kwh, 0)
+            )
+            <= MONATS_ARBEITSZAHL_MAX
+            * (
+                func.coalesce(Monatswert.wp_stromverbrauch_kwh, 0)
+                - func.coalesce(Monatswert.wp_strom_kuehlen_kwh, 0)
+            )
+        )
+        # (2) ZEITRAUM (SOLL §4.2 Fall 3): Eine Zeile mit Strom, aber ganz ohne
+        #     Wärme, deckt einen Zeitraum ab, den der Zähler nicht abdeckt — sie
+        #     senkt die Anlagenzahl, ohne dass ihr eine Wärmemenge gegenübersteht.
+        #     ⚠ Der Fall ist **Altbestand**: Seit dem 02.09.2026 setzt der Client
+        #     dafür `wp_jaz_belastbar = False` (`monats_fakten.py`), und Zeilen
+        #     mit dem Flag sind oben schon draußen. Hier bleibt nur, was mit
+        #     `NULL` aus der Zeit davor steht.
+        #     ⛔ Die MENGE der Zeile bleibt in jeder Mengen-Auswertung stehen (E1)
+        #     — gesperrt ist allein ihr Beitrag zur Kennzahl.
+        .where(
+            (
+                func.coalesce(Monatswert.wp_heizwaerme_kwh, 0)
+                + func.coalesce(Monatswert.wp_warmwasser_kwh, 0)
+            )
+            > 0
+        )
     )
     row = result.first()
     if not row or not row[0]:

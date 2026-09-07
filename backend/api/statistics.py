@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from statistics import median, stdev
 
 from core import get_db
-from core.wp_jaz import anlagen_jaz
+from core.wp_jaz import MONATS_ARBEITSZAHL_MAX, anlagen_jaz
 from models import Anlage, Monatswert
 from schemas import (
     GlobaleStatistik,
@@ -261,6 +261,47 @@ async def get_global_totals(db: AsyncSession = Depends(get_db)):
             anzahl_anlagen=row.n_anlagen,
         ))
 
+    # ── Die Kennzahl neben den Mengen (07.09.2026, Paket b Schritt 5) ────────
+    #
+    # ⛔ **Bis hierher rechnete der CLIENT sie** — `CommunityImpact.tsx` teilte
+    # die zwei Mengen oben durcheinander und schrieb „Ø JAZ" daneben. Damit
+    # standen drei Fehler in einer Zeile: keine der drei Bedingungen (P12 ·
+    # W-14 · A5) war angewandt, die Kilowattstunden des Kuehlbetriebs standen im
+    # Nenner ohne ihre Kaeltemenge im Zaehler, und der Name behauptete eine
+    # Arbeitszahl je Anlage, wo ein Summenquotient stand.
+    #
+    # ⚠ **Die MENGEN oben bleiben ungefiltert** (E1 — Mengen summiert,
+    # Kennzahlen getrennt): „Waerme erzeugt" und „Strom eingesetzt" sind
+    # additiv und richtig, und der Impact-Tab ist eine Mengen-Sicht.
+    # ⇒ Wer die zwei sichtbaren Zahlen teilt, bekommt deshalb NICHT diesen
+    # Quotienten. Das ist kein Widerspruch, sondern der Unterschied zwischen
+    # einer Menge und einer Kennzahl — und genau deshalb traegt die Anzeige
+    # den Namen „Waerme je kWh Strom" und die Zahl der Anlagen dahinter.
+    _wp_waerme_f = func.coalesce(Monatswert.wp_heizwaerme_kwh, 0) + func.coalesce(
+        Monatswert.wp_warmwasser_kwh, 0
+    )
+    _wp_strom_f = func.coalesce(
+        Monatswert.wp_stromverbrauch_kwh, 0
+    ) - func.coalesce(Monatswert.wp_strom_kuehlen_kwh, 0)
+    _wp_q = await db.execute(
+        select(
+            func.sum(_wp_waerme_f),
+            func.sum(_wp_strom_f),
+            func.count(distinct(Monatswert.anlage_id)),
+        )
+        .join(Anlage)
+        .where((Anlage.kuehlung_art.is_(None)) | (Anlage.kuehlung_art != "passiv"))
+        .where(Monatswert.wp_stromverbrauch_kwh > 0)
+        .where(_wp_waerme_f > 0)
+        .where(Monatswert.wp_jaz_belastbar.isnot(False))
+        .where(_wp_waerme_f <= MONATS_ARBEITSZAHL_MAX * _wp_strom_f)
+    )
+    _q = _wp_q.one()
+    _wp_quotient = (
+        round(_q[0] / _q[1], 2) if _q[0] and _q[1] and _q[1] > 0 else None
+    )
+    _wp_quotient_n = int(_q[2] or 0) if _wp_quotient is not None else None
+
     # CO2-Faktor: 0.38 kg/kWh (deutscher Strommix)
     co2_vermieden = eigenverbrauch * 0.38
 
@@ -278,6 +319,8 @@ async def get_global_totals(db: AsyncSession = Depends(get_db)):
         speicher_ladung_kwh=round(float(mw_row.sum_sp_lad or 0), 1),
         speicher_entladung_kwh=round(float(mw_row.sum_sp_entl or 0), 1),
         wp_anzahl=anlage_row.n_wp or 0,
+        wp_waerme_je_kwh_strom=_wp_quotient,
+        wp_quotient_anzahl=_wp_quotient_n,
         wp_stromverbrauch_kwh=round(float(mw_row.sum_wp_strom or 0), 1),
         wp_waerme_kwh=round(float(mw_row.sum_wp_waerme or 0), 1),
         eauto_anzahl=anlage_row.n_eauto or 0,

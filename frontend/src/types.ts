@@ -255,6 +255,14 @@ export interface CommunityGesamtwerte {
   wp_anzahl: number
   wp_stromverbrauch_kwh: number
   wp_waerme_kwh: number
+  /**
+   * Wärme je kWh Strom über die Community — vom Server gebildet, mit den drei
+   * Bedingungen und der Plausibilitätsgrenze. **Nicht** der Quotient der zwei
+   * Mengenfelder darüber: die bleiben ungefiltert.
+   */
+  wp_waerme_je_kwh_strom: number | null
+  /** Zahl der Anlagen hinter `wp_waerme_je_kwh_strom` — nicht `wp_anzahl`. */
+  wp_quotient_anzahl: number | null
   eauto_anzahl: number
   wallbox_anzahl: number
   eauto_km: number
