@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     secret_key: str = "change-me-in-production"
 
     # CORS
-    allowed_origins: str = "https://energie.raunet.eu"
+    allowed_origins: str = "https://energy.raunet.eu"
 
     @property
     def cors_origins(self) -> list[str]:
