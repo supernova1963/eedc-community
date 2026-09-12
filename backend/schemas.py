@@ -145,6 +145,18 @@ class MonatswertInput(BaseModel):
     # ⚠ `None` = Altbestand oder älterer Client („unbekannt") und **zählt mit**:
     # unbekannt ist nicht unbelastbar — dieselbe Regel wie bei `kuehlung_art`
     # (16ebb46). Nur `False` nimmt den Wert aus den JAZ-Auswertungen.
+    #
+    # ⛔ **Eine Lage sperrt der Client bewusst NICHT — und der Server muss sie
+    # selbst abfangen (eedc N-441, ab 2026-09-12):** Ein Monat mit Strom, aber
+    # **ganz ohne Wärme** (Sommer-Standby, oder ein Zähler, der erst später in
+    # Betrieb ging) kommt mit `True` an. Lokal ist das richtig — dort steht der
+    # genauere Satz „kein Wärmemengenzähler zugeordnet", und eine Aussage über
+    # *Geräte* wäre bei einer Ein-Geräte-Anlage falsch. Für den Server heißt es:
+    # `True` sagt „die Abgrenzung stimmt", **nicht** „es gibt hier eine Wärme".
+    # Jede Stelle, die Zähler und Nenner über mehrere Monatswerte summiert, muss
+    # Zeilen ohne Wärme selbst ausschließen — sonst senken sie den Nenner ohne
+    # Gegenstück im Zähler. `wp_jaz.py`, `stats.py`, `statistics.py` und
+    # `benchmark.py` tun das; der Riegel dort ist tragend, nicht historisch.
     wp_jaz_belastbar: bool | None = None
     # eedc W-14 (Client ab 2026-08-26): der Anteil von `wp_stromverbrauch_kwh`, der ins
     # **Kühlen** ging — eine **Teilmenge**, kein Summand. Er wird vom JAZ-Nenner

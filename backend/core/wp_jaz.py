@@ -168,10 +168,18 @@ async def anlagen_jaz(
         # (2) ZEITRAUM (SOLL §4.2 Fall 3): Eine Zeile mit Strom, aber ganz ohne
         #     Wärme, deckt einen Zeitraum ab, den der Zähler nicht abdeckt — sie
         #     senkt die Anlagenzahl, ohne dass ihr eine Wärmemenge gegenübersteht.
-        #     ⚠ Der Fall ist **Altbestand**: Seit dem 02.09.2026 setzt der Client
-        #     dafür `wp_jaz_belastbar = False` (`monats_fakten.py`), und Zeilen
-        #     mit dem Flag sind oben schon draußen. Hier bleibt nur, was mit
-        #     `NULL` aus der Zeit davor steht.
+        #     ⛔ **Dieser Riegel ist TRAGEND, nicht Altbestands-Absicherung.**
+        #     Hier stand bis zum 12.09.2026: „Der Fall ist Altbestand — seit dem
+        #     02.09.2026 setzt der Client dafür `wp_jaz_belastbar = False`."
+        #     Das galt nie ganz und gilt seit N-441 ausdrücklich nicht mehr: Der
+        #     Client sperrt eine Zeile **ohne jede Wärme** bewusst NICHT (sie ist
+        #     keine Aussage über Geräte, und der genauere Satz „kein
+        #     Wärmemengenzähler zugeordnet" steht lokal davor). Solche Zeilen
+        #     kommen also mit `wp_jaz_belastbar = True` an — dass sie die
+        #     Anlagenzahl nicht senken, entscheidet **allein diese Zeile hier**.
+        #     Dasselbe leisten `stats.py`, `statistics.py` und `benchmark.py` an
+        #     ihren vier Stellen; wer einen der Riegel entfernt, senkt die
+        #     Arbeitszahl jeder Anlage mit einem stromlosen Wärme-Monat.
         #     ⛔ Die MENGE der Zeile bleibt in jeder Mengen-Auswertung stehen (E1)
         #     — gesperrt ist allein ihr Beitrag zur Kennzahl.
         .where(
