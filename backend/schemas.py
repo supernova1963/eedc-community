@@ -159,13 +159,43 @@ class MonatswertInput(BaseModel):
     # `benchmark.py` tun das; der Riegel dort ist tragend, nicht historisch.
     wp_jaz_belastbar: bool | None = None
     # eedc W-14 (Client ab 2026-08-26): der Anteil von `wp_stromverbrauch_kwh`, der ins
-    # **Kühlen** ging — eine **Teilmenge**, kein Summand. Er wird vom JAZ-Nenner
-    # abgezogen: Kühlstrom erzeugt keine Wärme, seine Kältemenge steht in keinem
-    # Zähler. Ohne ihn stand eine kühlende Anlage systematisch schlechter da als
-    # eine, die nicht kühlt.
+    # **Kühlen** ging — eine **MENGE** und eine **Teilmenge**, kein Summand.
+    # Kühlstrom erzeugt keine Wärme, seine Kältemenge steht in keinem Zähler;
+    # stünde er im JAZ-Nenner, stünde eine kühlende Anlage systematisch
+    # schlechter da als eine, die nicht kühlt.
     # `None` = Altbestand oder älterer Client („unbekannt"); `0.0` = gemessen,
     # es gab keinen Kühlbetrieb. Der Unterschied ist Absicht.
+    #
+    # ⛔ **Er wird nur noch abgezogen, wenn `wp_strom_funktionsfremd_abzug_kwh`
+    # `None` ist** (13.09.2026, eedc WK-06b / N-454). Bis dahin sagte dieser
+    # Vertrag **zwei** Dinge in einem Feld — *was die Zahl ist* (eine Teilmenge)
+    # und *was mit ihr geschieht* (sie wird abgezogen). Genau diese Kopplung war
+    # der Defekt: Ob der Anteil abgezogen gehört, hängt am **Gerät** und weiß
+    # nur der Client. Die Bedeutung dieses Feldes ändert sich dabei **nicht** —
+    # es bleibt die Menge und geht unverändert in jede Mengen-Auswertung.
     wp_strom_kuehlen_kwh: float | None = Field(None, ge=0)
+    # eedc SOLL Wärme/Klima §4.1, „Ergänzung zu E7" (Option A; Client ab WK-06b,
+    # 13.09.2026): **der Teil des funktionsfremden Stroms, der vom JAZ-Nenner
+    # abgezogen werden DARF** — Kühlen **plus Lüften und Entfeuchten**.
+    #
+    # ⭐ **Eine Entscheidung, keine Menge** — dieselbe Bauform wie
+    # `wp_jaz_belastbar` darüber, und aus demselben Grund: Der Server hat die
+    # Geräte nie gesehen und kann sie nicht bilden. Die Regel lautet *„abgezogen
+    # wird nur, was im Nenner auch steht"* und fällt **je Gerät**:
+    #   • ohne getrennte Strommessung  → der Gesamtzähler enthält ihn ⇒ Abzug;
+    #   • mit getrennter Strommessung  → nur, wenn der Anteil **gemessen** ist
+    #     (dann ist er zum Topf addiert). Ein aus dem Betriebsmodus
+    #     **abgeleiteter** Anteil ist eine Verteilung genau der Zähler, die den
+    #     Nenner bilden — er kürzt sie nicht, der Client schickt 0.0.
+    #
+    # ⚠ `None` = Altbestand oder Client vor WK-06b ⇒ **Fallback auf
+    # `wp_strom_kuehlen_kwh`** (das bisherige Verhalten, unverändert).
+    # `0.0` = entschieden: nichts abziehen. Der Unterschied ist Absicht und
+    # trägt die ganze Regel — wer `None` wie `0.0` behandelt, zieht bei jedem
+    # Altbestand nichts mehr ab.
+    # ⛔ Der Fallback fällt nicht automatisch weg. Altbestand heilt beim
+    # nächsten Voll-Submit, nicht durch ein Datum.
+    wp_strom_funktionsfremd_abzug_kwh: float | None = Field(None, ge=0)
 
     # E-Auto-KPIs
     eauto_ladung_gesamt_kwh: float | None = Field(None, ge=0)

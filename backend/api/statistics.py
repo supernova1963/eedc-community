@@ -11,7 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from statistics import median, stdev
 
 from core import get_db
-from core.wp_jaz import MONATS_ARBEITSZAHL_MAX, anlagen_jaz
+from core.wp_jaz import (
+    MONATS_ARBEITSZAHL_MAX,
+    anlagen_jaz,
+    funktionsfremd_abzug_sql,
+)
 from models import Anlage, Monatswert
 from schemas import (
     GlobaleStatistik,
@@ -280,9 +284,17 @@ async def get_global_totals(db: AsyncSession = Depends(get_db)):
     _wp_waerme_f = func.coalesce(Monatswert.wp_heizwaerme_kwh, 0) + func.coalesce(
         Monatswert.wp_warmwasser_kwh, 0
     )
-    _wp_strom_f = func.coalesce(
-        Monatswert.wp_stromverbrauch_kwh, 0
-    ) - func.coalesce(Monatswert.wp_strom_kuehlen_kwh, 0)
+    # ⭐ 13.09.2026 (eedc WK-06b / N-454): abgezogen wird die ENTSCHEIDUNG des
+    # Clients (`wp_strom_funktionsfremd_abzug_kwh`), nicht die Menge
+    # `wp_strom_kuehlen_kwh` — die bleibt eine Menge und steht in den
+    # Mengen-Auswertungen oben unveraendert. Der Fallback auf die Menge greift
+    # nur fuer Zeilen ohne das neue Feld (Altbestand / Client vor WK-06b) und
+    # faellt nicht automatisch weg; Altbestand heilt beim naechsten Voll-Submit.
+    # Begruendung im SoT (`core/wp_jaz.py::funktionsfremd_abzug_sql`).
+    _wp_strom_f = (
+        func.coalesce(Monatswert.wp_stromverbrauch_kwh, 0)
+        - funktionsfremd_abzug_sql()
+    )
     _wp_q = await db.execute(
         select(
             func.sum(_wp_waerme_f),

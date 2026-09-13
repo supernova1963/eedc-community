@@ -34,9 +34,16 @@ Deshalb gibt es hier **einen** Ort und keine dritte Variante.
   ⭐ Seit dem 06.09.2026 trägt das Flag **zwei** Hälften: die Abgrenzung *und*
   die Herkunft (gerechnete Wärme aus ``Strom × gepflegter JAZ`` sperrt die
   Kennzahl, weil sie den gepflegten Wert nur zurückgibt).
-* **W-14 (SOLL §4.2 Fall 4)** — der Kühlstrom gehört nicht in den Nenner. Die
-  abgeführte Kältemenge steht in keinem Zähler; wer kühlt, stünde sonst
-  systematisch schlechter da als wer es nicht tut.
+* **W-14 (SOLL §4.2 Fall 4)** — der funktionsfremde Strom gehört nicht in den
+  Nenner. Die abgeführte Kältemenge steht in keinem Zähler; wer kühlt, stünde
+  sonst systematisch schlechter da als wer es nicht tut.
+  ⭐ Seit dem 13.09.2026 (eedc **WK-06b**, SOLL §4.1 „Ergänzung zu E7") sagt der
+  **Client**, wieviel abgezogen werden darf — ``wp_strom_funktionsfremd_abzug_kwh``
+  statt der Menge ``wp_strom_kuehlen_kwh``. Der Grund ist derselbe wie bei P12:
+  Die Frage *„steht dieser Anteil überhaupt im Nenner?"* hängt am **Gerät**, und
+  Geräte hat der Server nie gesehen. ``funktionsfremd_abzug_sql`` /
+  ``funktionsfremd_abzug_zeile`` sind die einzigen zwei Stellen, an denen die
+  Regel steht.
 * **A5 (SOLL §4.1/§7)** — passiv gekühlte Anlagen zählen nicht in einen
   gemeinsamen Durchschnitt. Passive Kühlung läuft nur über Umwälzpumpen, ihre
   Effizienz liegt um ein Vielfaches höher. Ihre **eigene** Kennzahl bleibt
@@ -87,6 +94,59 @@ MONATS_ARBEITSZAHL_MAX: float = 10.0
 MONATS_ARBEITSZAHL_AUFFAELLIG: float = 7.0
 
 
+def funktionsfremd_abzug_sql():
+    """Was vom JAZ-Nenner abgezogen wird — als SQL-Ausdruck, **je Zeile**.
+
+    ⭐ **Der Client entscheidet, der Server rechnet nicht nach** (13.09.2026,
+    eedc **WK-06b** / N-454; SOLL Wärme/Klima §4.1 „Ergänzung zu E7").
+    ``wp_strom_funktionsfremd_abzug_kwh`` ist die Entscheidung *„soviel darf vom
+    Nenner weg"* — Kühlen **plus Lüften und Entfeuchten**, und nur, soweit der
+    Anteil im Nenner auch drinsteht. Das hängt am Gerät (getrennte
+    Strommessung? gemessener oder abgeleiteter Anteil?), und Geräte hat der
+    Server nie gesehen.
+
+    ⛔ **Warum es das zweite Feld überhaupt gibt.** Bis hierher zog der Server
+    die **Menge** ``wp_strom_kuehlen_kwh`` ab und deutete sie damit um. Bei einer
+    Anlage, die Heizen und Warmwasser getrennt misst und ihren Kühlanteil aus dem
+    Betriebsmodus **ableitet**, ist dieser Anteil ein Ausschnitt genau der zwei
+    Zähler, die den Nenner bilden — ihn abzuziehen kürzt eine Messung um eine
+    Verteilung ihrer selbst. Gemessen an derselben Anlage (Fixture ``MONAT_F5_F3``):
+    **3,79** im Add-on gegen **4,24** hier, rund 12 %, und der höhere Wert ging in
+    **fremde** Vergleichswerte.
+
+    ⚠ **Der Fallback auf die Menge bleibt, und er fällt nicht automatisch weg.**
+    ``NULL`` heißt „Altbestand oder Client vor WK-06b" — für solche Zeilen gilt
+    unverändert das bisherige Verhalten. Altbestand heilt beim nächsten
+    **Voll-Submit**, nicht durch ein Datum. Eine ``0.0`` dagegen ist eine Aussage:
+    *entschieden, es ist nichts abzuziehen.*
+
+    ⛔ **``coalesce`` steht INNEN, die Summe außen.** ``sum(coalesce(abzug,
+    menge, 0))`` entscheidet je Monatszeile; ``coalesce(sum(abzug), sum(menge))``
+    wäre etwas anderes — eine einzige neue Zeile schaltete dann den Fallback für
+    den ganzen Zeitraum ab. Eine Anlage darf beides nebeneinander haben.
+    """
+    return func.coalesce(
+        Monatswert.wp_strom_funktionsfremd_abzug_kwh,
+        Monatswert.wp_strom_kuehlen_kwh,
+        0,
+    )
+
+
+def funktionsfremd_abzug_zeile(mw) -> float:
+    """Dieselbe Regel für eine bereits geladene ORM-Zeile (Python-Zweig).
+
+    Wortgleich zu :func:`funktionsfremd_abzug_sql` — sie steht hier zweimal,
+    weil zwei Zugriffsformen existieren, **nicht** weil es zwei Regeln gäbe. Wer
+    eine ändert, ändert beide; die Proben fahren jede Stelle einzeln.
+
+    ⚠ ``or 0`` erst **nach** der ``is not None``-Frage: ``0.0`` ist eine gültige
+    Entscheidung und darf nicht in den Fallback laufen.
+    """
+    if mw.wp_strom_funktionsfremd_abzug_kwh is not None:
+        return mw.wp_strom_funktionsfremd_abzug_kwh
+    return mw.wp_strom_kuehlen_kwh or 0.0
+
+
 def anlagen_filter(*, wp_art: str | None = None):
     """Das Anlagen-Prädikat für jeden JAZ-Vergleichswert.
 
@@ -121,7 +181,8 @@ async def anlagen_jaz(
     * keine belastbaren Monate (**P12**);
     * jede Zeile über der Plausibilitätsgrenze (**`MONATS_ARBEITSZAHL_MAX`**);
     * keine Zeile mit Wärme (**Zeitraum**, SOLL §4.2 Fall 3);
-    * der ganze Strom ging ins Kühlen (**W-14**).
+    * der ganze Strom ist abzuziehen (**W-14** — der Abzug erreicht den
+      Gesamtstrom; s. :func:`funktionsfremd_abzug_sql`).
 
     ⛔ **Alle Prädikate sperren die KENNZAHL, nie die MENGE** (E1). Strom-,
     Heiz- und Warmwassersummen laufen über eigene Queries und bleiben
@@ -133,7 +194,9 @@ async def anlagen_jaz(
             func.sum(Monatswert.wp_stromverbrauch_kwh),
             func.sum(Monatswert.wp_heizwaerme_kwh),
             func.sum(Monatswert.wp_warmwasser_kwh),
-            func.sum(Monatswert.wp_strom_kuehlen_kwh),
+            # WK-06b: der ABZUG (Client-Entscheidung, Fallback auf die Menge),
+            # nicht die Menge selbst — s. `funktionsfremd_abzug_sql`.
+            func.sum(funktionsfremd_abzug_sql()),
         )
         .where(Monatswert.anlage_id == anlage_id)
         .where(
@@ -162,7 +225,13 @@ async def anlagen_jaz(
             <= MONATS_ARBEITSZAHL_MAX
             * (
                 func.coalesce(Monatswert.wp_stromverbrauch_kwh, 0)
-                - func.coalesce(Monatswert.wp_strom_kuehlen_kwh, 0)
+                # WK-06b — derselbe Nenner wie unten. Stünde hier weiter die
+                # MENGE, prüfte die Ungleichung eine andere Arbeitszahl als die,
+                # die am Ende herauskommt: Im Sommerfall (fast der ganze Strom
+                # ins Kühlen, Abzug aber 0) ginge der Ausdruck gegen null und
+                # das Prädikat schlösse die Zeile aus — die Anlage verschwände
+                # still aus der Statistik, statt ihre Zahl beizutragen.
+                - funktionsfremd_abzug_sql()
             )
         )
         # (2) ZEITRAUM (SOLL §4.2 Fall 3): Eine Zeile mit Strom, aber ganz ohne
@@ -194,13 +263,13 @@ async def anlagen_jaz(
     if not row or not row[0]:
         return None
 
-    strom, heiz, ww, kuehl = row
+    strom, heiz, ww, abzug = row
     strom = strom or 0
     # Nie negativ, nie größer als der Gesamtstrom — der Client hält die
     # Invariante bereits, hier steht sie als Zusicherung gegen Altbestand.
-    kuehl = min(max(kuehl or 0, 0), max(strom, 0))
+    abzug = min(max(abzug or 0, 0), max(strom, 0))
     # W-14: der Nenner ist der Strom, der zu DIESER Wärme gehört.
-    strom_waerme = strom - kuehl
+    strom_waerme = strom - abzug
     if strom_waerme <= 0:
         return None
 

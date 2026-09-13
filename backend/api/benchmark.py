@@ -15,6 +15,7 @@ from core.wp_jaz import (
     anlagen_filter,
     anlagen_jaz,
     durchschnitts_jaz,
+    funktionsfremd_abzug_zeile,
 )
 from models import Anlage, Monatswert
 from schemas import (
@@ -167,13 +168,20 @@ async def berechne_wp_kpis(
     hat die Betriebsart-Spur nie gesehen; ``wp_strom_kuehlen_kwh`` kommt aus dem
     Client (eedc ab 2026-08-26). ``NULL`` heißt „unbekannt" und wird wie 0 behandelt
     — das ist genau der Altbestand, für den bisher gar nichts abgezogen wurde.
+
+    ⛔ **Der Abzug passiert hier NICHT mehr, sondern in ``anlagen_jaz``** — die
+    Query unten liefert nur noch die **Mengen**. Bis zum 13.09.2026 summierte sie
+    zusätzlich ``wp_strom_kuehlen_kwh`` und klemmte den Wert auf ``[0, strom]``;
+    seit `85c75a2` (06.09.) kam die Kennzahl aber aus dem SoT, und **niemand las
+    das Ergebnis mehr**. Entfernt, weil es sonst wie eine fünfte Rechenstelle
+    aussieht: Bei der Erhebung zu N-454 wurde es genau so gezählt. *Toter Code an
+    einer Regel-Stelle ist eine Behauptung über die Regel.*
     """
     result = await db.execute(
         select(
             func.sum(Monatswert.wp_stromverbrauch_kwh),
             func.sum(Monatswert.wp_heizwaerme_kwh),
             func.sum(Monatswert.wp_warmwasser_kwh),
-            func.sum(Monatswert.wp_strom_kuehlen_kwh),
         )
         .where(Monatswert.anlage_id == anlage_id)
         .where(
@@ -189,13 +197,10 @@ async def berechne_wp_kpis(
     if not row or not row[0]:
         return None
 
-    strom, heiz, ww, kuehl = row
+    strom, heiz, ww = row
     strom = strom or 0
     heiz = heiz or 0
     ww = ww or 0
-    # Nie negativ, nie größer als der Gesamtstrom — der Client hält die
-    # Invariante bereits, hier steht sie als Zusicherung gegen Altbestand.
-    kuehl = min(max(kuehl or 0, 0), max(strom, 0))
 
     if strom == 0:
         return None
@@ -944,8 +949,17 @@ async def get_monats_benchmark(
                 # Dazu die Plausibilitätsgrenze desselben SoT: eine Zeile über
                 # `MONATS_ARBEITSZAHL_MAX` behauptet mehr, als eine Wärmepumpe
                 # kann (SOLL §3.2b Fall A7 — bivalenter Heizkreis).
+                #
+                # ⭐ 13.09.2026 (eedc WK-06b / N-454) — abgezogen wird die
+                # ENTSCHEIDUNG des Clients, nicht die Menge. `wp_strom_kuehlen_kwh`
+                # bleibt die Menge; `funktionsfremd_abzug_zeile` liest das neue
+                # Feld und faellt nur fuer Zeilen ohne dieses Feld (Altbestand /
+                # Client vor WK-06b) darauf zurueck. Der Fallback bleibt stehen
+                # und faellt nicht automatisch weg — Altbestand heilt beim
+                # naechsten Voll-Submit. Dieselbe Regel wie in den drei
+                # SQL-Stellen, hier in Python, weil die Zeilen schon geladen sind.
                 strom_waerme = mw.wp_stromverbrauch_kwh - min(
-                    max(mw.wp_strom_kuehlen_kwh or 0, 0),
+                    max(funktionsfremd_abzug_zeile(mw), 0),
                     mw.wp_stromverbrauch_kwh,
                 )
                 passiv = anlage.kuehlung_art == "passiv"

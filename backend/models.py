@@ -122,11 +122,27 @@ class Monatswert(Base):
     # **zaehlt mit** (wie `kuehlung_art`): unbekannt ist nicht unbelastbar.
     wp_jaz_belastbar: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     # eedc W-14: der Anteil von `wp_stromverbrauch_kwh`, der ins **Kühlen** ging.
-    # Ohne ihn stünde er im Nenner des JAZ, während die Kältemenge im Zähler
-    # fehlt — eine kühlende Anlage stünde systematisch schlechter da als eine,
-    # die es nicht tut. **Teilmenge, kein Summand** — nie addieren.
+    # Eine **MENGE** — was der Monat gekühlt hat. **Teilmenge, kein Summand**
+    # (nie addieren), und seit dem 13.09.2026 auch **kein Abzug mehr**: was vom
+    # JAZ-Nenner abgezogen werden darf, steht in
+    # `wp_strom_funktionsfremd_abzug_kwh` darunter. Dieses Feld hier wird nur
+    # noch als **Fallback** abgezogen, wenn das andere NULL ist (älterer Client).
     # NULL = Altbestand oder älterer Client („unbekannt", nicht „null kWh").
     wp_strom_kuehlen_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # eedc SOLL Wärme/Klima §4.1 („Ergänzung zu E7", Option A, 12.09.2026):
+    # der Teil des funktionsfremden Stroms (Kühlen + Lüften + Entfeuchten), der
+    # vom JAZ-Nenner abgezogen werden DARF — eine **Entscheidung des Clients**,
+    # keine Menge. Er entscheidet sie je Gerät: Abgezogen wird nur, was im
+    # Nenner auch drinsteht. Bei getrennter Strommessung (Heizen/Warmwasser als
+    # eigene Zähler) ist ein aus dem Betriebsmodus **abgeleiteter** Kühlanteil
+    # ein Ausschnitt genau dieser zwei Zähler — er kürzt sie nicht, und der
+    # Client schickt hier 0.0. Der Server kann das nicht selbst bilden: Er hat
+    # die Geräte nie gesehen.
+    # NULL = Altbestand oder Client < WK-06b ⇒ Fallback auf `wp_strom_kuehlen_kwh`.
+    # 0.0 = entschieden, es ist nichts abzuziehen. Der Unterschied ist Absicht.
+    wp_strom_funktionsfremd_abzug_kwh: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
 
     # E-Auto-KPIs
     eauto_ladung_gesamt_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)

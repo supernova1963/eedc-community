@@ -17,7 +17,7 @@ from schemas import (
     VerfuegbareMonate,
     VerfuegbarerMonat,
 )
-from core.wp_jaz import MONATS_ARBEITSZAHL_MAX
+from core.wp_jaz import MONATS_ARBEITSZAHL_MAX, funktionsfremd_abzug_sql
 from .aggregations import compute_speicher_stats
 
 router = APIRouter(prefix="/stats", tags=["Statistiken"])
@@ -233,9 +233,17 @@ async def get_regionen_statistiken(db: AsyncSession) -> list[RegionStatistik]:
         _wp_waerme = func.coalesce(Monatswert.wp_heizwaerme_kwh, 0) + func.coalesce(
             Monatswert.wp_warmwasser_kwh, 0
         )
-        _wp_strom_waerme = func.coalesce(
-            Monatswert.wp_stromverbrauch_kwh, 0
-        ) - func.coalesce(Monatswert.wp_strom_kuehlen_kwh, 0)
+        # ⭐ 13.09.2026 (eedc WK-06b / N-454) — abgezogen wird die ENTSCHEIDUNG
+        #   des Clients, nicht die Menge: `funktionsfremd_abzug_sql()` liefert
+        #   `wp_strom_funktionsfremd_abzug_kwh` und faellt nur dann auf
+        #   `wp_strom_kuehlen_kwh` zurueck, wenn die Zeile das neue Feld nicht
+        #   kennt (Altbestand / Client vor WK-06b). Der Fallback bleibt stehen
+        #   und faellt nicht automatisch weg — Altbestand heilt beim naechsten
+        #   Voll-Submit. Begruendung im SoT (`core/wp_jaz.py`).
+        _wp_strom_waerme = (
+            func.coalesce(Monatswert.wp_stromverbrauch_kwh, 0)
+            - funktionsfremd_abzug_sql()
+        )
         wp_result = await db.execute(
             select(
                 func.sum(_wp_waerme),

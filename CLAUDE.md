@@ -128,6 +128,11 @@ class Monatswert(Base):
     wp_stromverbrauch_kwh: float | None
     wp_heizwaerme_kwh: float | None
     wp_warmwasser_kwh: float | None
+    wp_strom_kuehlen_kwh: float | None            # MENGE (Teilmenge des Stroms)
+    wp_strom_funktionsfremd_abzug_kwh: float | None  # ENTSCHEIDUNG: soviel darf
+                                                     # vom JAZ-Nenner weg.
+                                                     # NULL ⇒ Fallback auf die Menge
+    wp_jaz_belastbar: bool | None                 # ENTSCHEIDUNG: JAZ bildbar?
     # E-Auto-KPIs
     eauto_ladung_gesamt_kwh: float | None
     eauto_ladung_pv_kwh: float | None
@@ -141,6 +146,24 @@ class Monatswert(Base):
     bkw_erzeugung_kwh: float | None
     bkw_eigenverbrauch_kwh: float | None
 ```
+
+> ⚠ **Auszug** — die vollständige Liste steht in `backend/models.py`.
+>
+> ⭐ **Zwei Sorten Feld, und sie werden nie vermischt: MENGEN und ENTSCHEIDUNGEN.**
+> Eine Menge (`wp_strom_kuehlen_kwh`, jede kWh-Zahl) ist additiv und geht in jede
+> Mengen-Auswertung. Eine Entscheidung (`wp_jaz_belastbar`,
+> `wp_strom_funktionsfremd_abzug_kwh`, `kuehlung_art`) beantwortet eine Frage, die
+> **nur der Client** beantworten kann, weil sie an den **Geräten** hängt — die hat
+> der Server nie gesehen. *Er rechnet nichts nach; er liest, was entschieden wurde.*
+>
+> **Bei jeder Entscheidung heißt `NULL` „älterer Client, unbekannt" — nie „nein".**
+> Was dann gilt, steht im Docstring des Feldes in `backend/schemas.py`
+> (`wp_jaz_belastbar`: zählt mit; `wp_strom_funktionsfremd_abzug_kwh`: Fallback auf
+> die Menge). Altbestand heilt beim nächsten Voll-Submit, nicht durch ein Datum.
+>
+> ⛔ Wer eine Menge als Entscheidung verwendet, baut den Fehler von **WK-06b**
+> nach: Der Server zog `wp_strom_kuehlen_kwh` selbst vom JAZ-Nenner ab und stand
+> für dieselbe Anlage bei 4,24, wo eedc 3,79 zeigte.
 
 ## API Endpoints (19 Endpoints, 6 Router)
 

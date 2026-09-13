@@ -106,5 +106,25 @@ async def run_migrations(conn):
                 connection.execute(text(
                     "ALTER TABLE monatswerte ADD COLUMN wp_jaz_belastbar BOOLEAN"
                 ))
+            # 2026-09-13 (eedc WK-06b / N-454, SOLL Waerme/Klima §4.1 „Ergaenzung
+            # zu E7"): Wieviel funktionsfremder Strom (Kuehlen + Lueften +
+            # Entfeuchten) vom JAZ-Nenner abgezogen werden DARF. Eine
+            # ENTSCHEIDUNG des Clients, keine Menge — dieselbe Bauform wie
+            # `wp_jaz_belastbar` darueber. Bis dahin zog der Server die MENGE
+            # `wp_strom_kuehlen_kwh` selbst ab; das ist bei getrennter
+            # Strommessung mit abgeleitetem Modus-Split falsch (der Anteil ist
+            # ein Ausschnitt genau der Zaehler, die den Nenner bilden — gemessen
+            # 3,79 lokal gegen 4,24 hier, dieselbe Anlage).
+            #
+            # ⚠ NULL = Altbestand oder aelterer Client und faellt auf
+            # `wp_strom_kuehlen_kwh` zurueck: das bisherige Verhalten bleibt fuer
+            # jede Zeile stehen, die das Feld noch nicht kennt. Zum Zeitpunkt der
+            # Migration ist das JEDE Zeile — Altbestand heilt beim naechsten
+            # Voll-Submit, nicht durch die Migration.
+            if "wp_strom_funktionsfremd_abzug_kwh" not in existing_mw:
+                connection.execute(text(
+                    "ALTER TABLE monatswerte "
+                    "ADD COLUMN wp_strom_funktionsfremd_abzug_kwh FLOAT"
+                ))
 
     await conn.run_sync(_run)

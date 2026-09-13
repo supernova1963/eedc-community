@@ -257,8 +257,15 @@ async def submit_anlage(
             existing.wp_stromverbrauch_kwh = mw.wp_stromverbrauch_kwh
             existing.wp_heizwaerme_kwh = mw.wp_heizwaerme_kwh
             existing.wp_warmwasser_kwh = mw.wp_warmwasser_kwh
-            # eedc W-14: Teilmenge des WP-Stroms, die ins Kühlen ging.
+            # eedc W-14: Teilmenge des WP-Stroms, die ins Kühlen ging (MENGE).
             existing.wp_strom_kuehlen_kwh = mw.wp_strom_kuehlen_kwh
+            # eedc WK-06b: wieviel davon vom JAZ-Nenner abgezogen werden darf
+            # (ENTSCHEIDUNG, s. `MonatswertInput`). Auch `None` wird gesetzt —
+            # Voll-Submit, der Client sagt, was gilt; ein alter Client schaltet
+            # die Zeile damit auf den Fallback zurück, und das ist richtig so.
+            existing.wp_strom_funktionsfremd_abzug_kwh = (
+                mw.wp_strom_funktionsfremd_abzug_kwh
+            )
             existing.wp_jaz_belastbar = mw.wp_jaz_belastbar
             # E-Auto
             existing.eauto_ladung_gesamt_kwh = mw.eauto_ladung_gesamt_kwh
@@ -302,6 +309,10 @@ async def submit_anlage(
                 wp_heizwaerme_kwh=mw.wp_heizwaerme_kwh,
                 wp_warmwasser_kwh=mw.wp_warmwasser_kwh,
                 wp_strom_kuehlen_kwh=mw.wp_strom_kuehlen_kwh,
+                # eedc WK-06b — die Entscheidung neben der Menge (s. o.).
+                wp_strom_funktionsfremd_abzug_kwh=(
+                    mw.wp_strom_funktionsfremd_abzug_kwh
+                ),
                 wp_jaz_belastbar=mw.wp_jaz_belastbar,
                 # E-Auto
                 eauto_ladung_gesamt_kwh=mw.eauto_ladung_gesamt_kwh,
