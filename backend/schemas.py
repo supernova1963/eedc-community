@@ -118,6 +118,16 @@ class MonatswertInput(BaseModel):
     speicher_ladung_netz_kwh: float | None = Field(None, ge=0)
 
     # Wärmepumpe-KPIs
+    #
+    # ⚠ **`wp_heizwaerme_kwh` trägt bei einem gemeinsamen Wärmemengenzähler die
+    # GESAMTwärme** (eedc-Monatswert *Wärme gesamt*, N-391 ab 2026-09-14): Viele
+    # Wärmepumpen messen Heizung und Warmwasser mit **einem** Zähler; dann sendet
+    # der Client die ganze Wärme in diesem Feld und `wp_warmwasser_kwh` bleibt
+    # leer. Ausgewertet wird beides ohnehin nur **in der Summe**
+    # (`core/wp_jaz.py`, `api/stats.py`, `api/statistics.py`, `api/benchmark.py`)
+    # — deshalb kein eigenes Feld und keine Migration. Wer die beiden künftig
+    # **einzeln** auswerten will, kann das nicht aus diesen Zahlen: Sie sind eine
+    # Aufteilung nur dort, wo der Anwender zwei Zähler hat.
     wp_stromverbrauch_kwh: float | None = Field(None, ge=0)
     wp_heizwaerme_kwh: float | None = Field(None, ge=0)
     wp_warmwasser_kwh: float | None = Field(None, ge=0)
