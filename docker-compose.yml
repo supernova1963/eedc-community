@@ -22,13 +22,22 @@ services:
     image: supernova1963/eedc-community:latest
     container_name: eedc-community-api
     restart: unless-stopped
-    # Pflicht, nicht Debug-Rest: NPM laeuft auf dem System-Daemon von 192.168.1.3, dieser
-    # Stack auf dem Snap-Daemon. Ueber ein Container-Netz koennen sich beide grundsaetzlich
-    # nicht erreichen -- das Netz `nginxproxymanager_default` unten traegt den Verkehr NICHT.
-    # Der Proxy-Host in NPM zeigt deshalb auf 192.168.1.3:8099 statt auf den Container-Namen.
-    # Ohne diese Zeile liefert energy.raunet.eu 502 (Vorfall 2026-09-08 nach Stromausfall).
-    ports:
-      - "8099:8080"
+    # ⚑ 2026-09-16: Hier stand `ports: ["8099:8080"]` — der Notbehelf vom 08.09., und
+    # darueber eine Begruendung, die WIDERLEGT ist. Sie lautete: "NPM laeuft auf dem
+    # System-Daemon, dieser Stack auf dem Snap-Daemon -- ueber ein Container-Netz koennen
+    # sich beide grundsaetzlich nicht erreichen."
+    #
+    # Der Doppel-Daemon wurde am 16.09. beseitigt (`snap remove docker`) — und der Fehler
+    # BLIEB. Gemessen im NPM-Container, gleicher Moment, gleiches Ziel:
+    #     altes Netz 172.18.0.3:8080 -> 000   (ARP-Flags 0x0, MAC 00:00:00:00:00:00)
+    #     neues Netz 172.19.0.3:8080 -> 200   (ARP-Flags 0x2)
+    # Der Unterschied war das Erstellungsdatum: `nginxproxymanager_default` stammte vom
+    # 2023-08-12 und trug nach mehreren Docker-Hauptversionen nicht mehr. Der Host-Port
+    # umging also nicht die Daemon-Grenze, sondern das kaputte Netz.
+    #
+    # ⭐ Seit dem Netz-Umbau erreicht der Proxy die API ueber `eedc-community-api:8080`.
+    # Der veroeffentlichte Port ist damit ueberfluessig — und er war eine offene Flanke:
+    # die API antwortete auf 192.168.1.3:8099 OHNE TLS.
     environment:
       - DATABASE_URL=postgresql+asyncpg://eedc:${POSTGRES_PASSWORD}@db:5432/eedc_community
       - SECRET_KEY=${SECRET_KEY}
@@ -38,7 +47,7 @@ services:
         condition: service_healthy
     networks:
       - internal
-      - nginxproxymanager_default
+      - proxy
 
   db:
     image: postgres:16-alpine
@@ -64,5 +73,9 @@ volumes:
 networks:
   internal:
     driver: bridge
-  nginxproxymanager_default:
+  # ⚑ Seit 2026-09-16 statt `nginxproxymanager_default` (s. Kommentar bei `ports`).
+  # Einmalig von Hand angelegt: `docker network create proxy`. Bewusst KEIN
+  # Compose-Default-Netz: dessen Name waere `<projektname>_default` und zeigte nach einer
+  # Stack-Umbenennung ins Leere -- genau die Kopplung, die den 08.09. mitverursacht hat.
+  proxy:
     external: true
