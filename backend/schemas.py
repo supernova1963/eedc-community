@@ -275,7 +275,17 @@ class AnlageSubmitInput(BaseModel):
 
     # Komponenten-Details
     wallbox_kw: float | None = Field(None, ge=0, le=50)  # Ladeleistung in kW
-    bkw_wp: float | None = Field(None, ge=0, le=2000)  # BKW Leistung in Wp
+    # BKW-Modulleistung in Wp. ⛔ Hier stand bis zum 17.09.2026 `le=2000` — und
+    # jede Anlage mit mehr Modulleistung (seit dem Solarpaket I sind 2.000 W
+    # WECHSELRICHTER-Leistung bei bis zu ~2.400 Wp Modulen ueblich, eedc begrenzt
+    # die Modulleistung gar nicht) bekam ihren GESAMTEN Submit mit 422 zurueck:
+    # im NPM-Log 21 Abweisungen in 18 Tagen (30.08.–17.09.), Antwortlaenge 149
+    # Bytes = genau diese Meldung, teils fuenfmal in sechs Minuten — ein
+    # Anwender, der immer wieder auf „Jetzt uebertragen" drueckte (F-74).
+    # Die Grenze schuetzt nichts: Der Wert geht in keine Rechnung, er wird nur
+    # angezeigt. 50 kWp ist die Grenze, ab der es kein Balkonkraftwerk mehr ist,
+    # sondern eine Fehleingabe — dieselbe Groessenordnung wie `wallbox_kw`.
+    bkw_wp: float | None = Field(None, ge=0, le=50_000)
     sonstiges_bezeichnung: str | None = Field(None, max_length=100)
     # ⛔ Hier stand `wp_art` ein ZWEITES Mal, als `str | None`. In Pydantic
     # gewinnt die spätere Deklaration — der `Literal`-Constraint oben war damit
