@@ -10,6 +10,12 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import get_db
+from core.spez_ertrag import (
+    FENSTER_MONATE,
+    durchschnitt,
+    lade_spez_jahresertrag,
+    lade_spez_jahresertraege,
+)
 from core.wp_jaz import (
     MONATS_ARBEITSZAHL_MAX,
     anlagen_filter,
@@ -465,115 +471,99 @@ async def berechne_community_avg_bkw_spez_ertrag(db: AsyncSession) -> float | No
     return sum(spez_ertraege) / len(spez_ertraege) if spez_ertraege else None
 
 
-async def berechne_spez_jahresertrag(db: AsyncSession, anlage_id: int, kwp: float) -> float:
-    """Berechnet den spezifischen Jahresertrag für eine Anlage (letzte 12 Monate, hochgerechnet)."""
-    if kwp <= 0:
-        return 0
-
-    monate_result = await db.execute(
-        select(Monatswert.ertrag_kwh)
-        .where(Monatswert.anlage_id == anlage_id)
-        .order_by(Monatswert.jahr.desc(), Monatswert.monat.desc())
-        .limit(12)
-    )
-    ertraege = [row[0] for row in monate_result.all() if row[0] is not None]
-
-    if not ertraege:
-        return 0
-
-    summe_ertrag = sum(ertraege)
-    anzahl_monate = len(ertraege)
-
-    # Auf 12 Monate hochrechnen
-    if anzahl_monate >= 6:
-        jahres_ertrag = (summe_ertrag / anzahl_monate) * 12
-    else:
-        jahres_ertrag = summe_ertrag  # Nicht genug Daten zum Hochrechnen
-
-    return jahres_ertrag / kwp
-
-
 async def berechne_community_durchschnitt(db: AsyncSession) -> float:
-    """Berechnet den Community-Durchschnitt (alle Anlagen, letzte 12 Monate)."""
-    anlagen_result = await db.execute(select(Anlage))
-    anlagen = anlagen_result.scalars().all()
+    """Mittelwert der Vergleichsgruppe — SoT ``core/spez_ertrag.py`` (#387).
 
-    if not anlagen:
-        return 0
-
-    jahresertraege = []
-    for anlage in anlagen:
-        spez = await berechne_spez_jahresertrag(db, anlage.id, anlage.kwp)
-        if spez > 0:
-            jahresertraege.append(spez)
-
-    return sum(jahresertraege) / len(jahresertraege) if jahresertraege else 0
+    Bis zum 17.09.2026 stand hier eine eigene Kopie der Hochrechnung, die
+    Anlagen unter sechs Monaten mit ihrer **Rohsumme** mitzählte, während
+    Rangliste, Histogramm und ``/stats`` sie übersprangen — das war F-46
+    (Add-on 688,5 gegen Website 862,0 am 17.09.). Eine Rechenstelle, eine Zahl.
+    """
+    return durchschnitt(await lade_spez_jahresertraege(db))
 
 
 async def berechne_region_durchschnitt(db: AsyncSession, region: str) -> float:
-    """Berechnet den Regions-Durchschnitt."""
-    anlagen_result = await db.execute(
-        select(Anlage).where(Anlage.region == region)
-    )
-    anlagen = anlagen_result.scalars().all()
-
-    if not anlagen:
+    """Mittelwert der Vergleichsgruppe einer Region (SoT ``core/spez_ertrag.py``)."""
+    ids = [
+        row[0]
+        for row in (await db.execute(select(Anlage.id).where(Anlage.region == region))).all()
+    ]
+    if not ids:
         return 0
-
-    jahresertraege = []
-    for anlage in anlagen:
-        spez = await berechne_spez_jahresertrag(db, anlage.id, anlage.kwp)
-        if spez > 0:
-            jahresertraege.append(spez)
-
-    return sum(jahresertraege) / len(jahresertraege) if jahresertraege else 0
+    return durchschnitt(await lade_spez_jahresertraege(db, anlage_ids=ids))
 
 
 async def berechne_rang_und_anzahl(
     db: AsyncSession, anlage_id: int, region: str
-) -> tuple[int, int, int, int, int, int]:
-    """Liefert (rang_gesamt, anzahl_gesamt, anzahl_mit_daten,
-                rang_region, anzahl_region, anzahl_region_mit_daten).
+) -> tuple[int | None, int, int | None, int]:
+    """Liefert (rang_gesamt, anzahl_gesamt, rang_region, anzahl_region).
 
-    `anzahl_*` zählt alle Anlagen in der DB (für Submit-Confirmation).
-    `anzahl_*_mit_daten` zählt nur Anlagen mit spez_ertrag > 0
-    (für Dashboard-Anzeige 'von N'). Beide Konzepte werden parallel benötigt
-    (Original-Inkonsistenz Submit vs. Dashboard, bewusst beibehalten).
+    ``anzahl_*`` zählt die **Vergleichsgruppe** — die Anlagen, die einen Wert
+    haben und damit in der Rangliste stehen. „Rang 14 von 138" mischte bis zum
+    17.09.2026 einen Rang aus 95 bewerteten Anlagen mit der Zahl *aller*
+    Anlagen, und Bestätigung und Dashboard zählten dazu noch verschieden; jetzt
+    nennen beide Zahlen dieselbe Grundgesamtheit.
+
+    ⚠ Der Rang ist ``None``, wenn die Anlage selbst keinen Wert hat. Vorher
+    stand dort über den ``next(..., 1)``-Vorgabewert eine **1** — eine Anlage
+    ohne vergleichbaren Wert wurde als Erstplatzierte gemeldet (#387, dritter
+    Teil der Zusage aus eedc v4.0.22).
     """
-    anzahl_result = await db.execute(select(func.count(Anlage.id)))
-    anzahl_gesamt = anzahl_result.scalar() or 1
+    ertraege = await lade_spez_jahresertraege(db)
+    region_je_anlage = {
+        aid: r for aid, r in (await db.execute(select(Anlage.id, Anlage.region))).all()
+    }
 
-    region_result = await db.execute(
-        select(func.count(Anlage.id)).where(Anlage.region == region)
+    gruppe_alle = sorted(
+        ((aid, e.wert) for aid, e in ertraege.items() if e.wert is not None),
+        key=lambda x: x[1],
+        reverse=True,
     )
-    anzahl_region = region_result.scalar() or 1
-
-    alle_result = await db.execute(select(Anlage))
-    alle = alle_result.scalars().all()
-
-    ertraege_alle: list[tuple[int, float]] = []
-    ertraege_region: list[tuple[int, float]] = []
-    for a in alle:
-        spez = await berechne_spez_jahresertrag(db, a.id, a.kwp)
-        if spez > 0:
-            ertraege_alle.append((a.id, spez))
-            if a.region == region:
-                ertraege_region.append((a.id, spez))
-
-    ertraege_alle.sort(key=lambda x: x[1], reverse=True)
-    ertraege_region.sort(key=lambda x: x[1], reverse=True)
+    gruppe_region = [
+        (aid, wert) for aid, wert in gruppe_alle if region_je_anlage.get(aid) == region
+    ]
 
     rang_gesamt = next(
-        (i + 1 for i, (aid, _) in enumerate(ertraege_alle) if aid == anlage_id),
-        1,
+        (i + 1 for i, (aid, _) in enumerate(gruppe_alle) if aid == anlage_id), None
     )
     rang_region = next(
-        (i + 1 for i, (aid, _) in enumerate(ertraege_region) if aid == anlage_id),
-        1,
+        (i + 1 for i, (aid, _) in enumerate(gruppe_region) if aid == anlage_id), None
     )
+    return rang_gesamt, len(gruppe_alle), rang_region, len(gruppe_region)
 
-    return (rang_gesamt, anzahl_gesamt, len(ertraege_alle),
-            rang_region, anzahl_region, len(ertraege_region))
+
+async def baue_benchmark_data(db: AsyncSession, anlage: Anlage) -> BenchmarkData:
+    """Die EINE Konstruktionsstelle für ``BenchmarkData`` — Dashboard und Submit.
+
+    Bis zum 17.09.2026 bauten ``get_anlage_benchmark`` und
+    ``submit.py::calculate_benchmark`` das Objekt getrennt und zählten „von N"
+    verschieden (alle Anlagen gegen Anlagen mit Wert). Jetzt gibt es eine
+    Stelle, und sie trägt die ``basis_*``-Felder, die der Client seit v4.0.22
+    liest (#387).
+    """
+    jahresertrag = await lade_spez_jahresertrag(db, anlage.id)
+    spez_ertrag_durchschnitt = await berechne_community_durchschnitt(db)
+    spez_ertrag_region = await berechne_region_durchschnitt(db, anlage.region)
+    rang_gesamt, anzahl_gesamt, rang_region, anzahl_region = await berechne_rang_und_anzahl(
+        db, anlage.id, anlage.region
+    )
+    return BenchmarkData(
+        spez_ertrag_anlage=(
+            round(jahresertrag.wert, 1) if jahresertrag.wert is not None else None
+        ),
+        spez_ertrag_durchschnitt=round(spez_ertrag_durchschnitt, 1) or None,
+        spez_ertrag_region=round(spez_ertrag_region, 1) or None,
+        rang_gesamt=rang_gesamt,
+        anzahl_anlagen_gesamt=anzahl_gesamt,
+        rang_region=rang_region,
+        anzahl_anlagen_region=anzahl_region,
+        basis_monate=jahresertrag.basis_monate,
+        fenster_monate=FENSTER_MONATE,
+        basis_bis_jahr=jahresertrag.bis_jahr,
+        basis_bis_monat=jahresertrag.bis_monat,
+        basis_veraltet=jahresertrag.veraltet,
+        basis_grund=jahresertrag.grund,
+    )
 
 
 @router.get("/anlage/{anlage_hash}")
@@ -616,20 +606,9 @@ async def get_anlage_benchmark(
     )
     monatswerte = result.scalars().all()
 
-    # Spez. Jahresertrag der Anlage (letzte 12 Monate, hochgerechnet)
-    spez_ertrag_anlage = await berechne_spez_jahresertrag(db, anlage.id, anlage.kwp)
-
-    # Community-Durchschnitt
-    spez_ertrag_durchschnitt = await berechne_community_durchschnitt(db)
-
-    # Regions-Durchschnitt
-    spez_ertrag_region = await berechne_region_durchschnitt(db, anlage.region)
-
-    # Rang + Anzahl (SoT-Helper, identisch zur Submit-Confirmation)
-    (rang_gesamt, anzahl_gesamt, anzahl_mit_daten,
-     rang_region, anzahl_region, anzahl_region_mit_daten) = await berechne_rang_und_anzahl(
-        db, anlage.id, anlage.region
-    )
+    # Jahreswert, Durchschnitte, Rang — EINE Konstruktionsstelle, dieselbe wie
+    # bei der Submit-Bestätigung (SoT core/spez_ertrag.py, #387).
+    benchmark_daten = await baue_benchmark_data(db, anlage)
 
     # Monatswerte mit spez. Ertrag anreichern
     monatswerte_output = [
@@ -669,14 +648,16 @@ async def get_anlage_benchmark(
     # Erweiterte Komponenten-Benchmarks berechnen
     erweiterte_benchmarks = None
 
-    # PV-Benchmark (immer vorhanden)
+    # PV-Benchmark — der Jahres-KPI fehlt, wenn die Anlage keinen Jahreswert
+    # hat (#387, Grund in `benchmark_daten.basis_grund`); die Monatsvergleiche
+    # daneben bleiben.
     pv_benchmark = PVBenchmark(
         spez_ertrag=KPIVergleich(
-            wert=round(spez_ertrag_anlage, 1),
-            community_avg=round(spez_ertrag_durchschnitt, 1),
-            rang=rang_gesamt,
-            von=anzahl_mit_daten,
-        ),
+            wert=benchmark_daten.spez_ertrag_anlage,
+            community_avg=benchmark_daten.spez_ertrag_durchschnitt,
+            rang=benchmark_daten.rang_gesamt,
+            von=benchmark_daten.anzahl_anlagen_gesamt,
+        ) if benchmark_daten.spez_ertrag_anlage is not None else None,
     )
 
     # Speicher-Benchmark
@@ -811,15 +792,7 @@ async def get_anlage_benchmark(
             wp_art=anlage.wp_art,
             monatswerte=monatswerte_output,
         ),
-        "benchmark": BenchmarkData(
-            spez_ertrag_anlage=round(spez_ertrag_anlage, 1),
-            spez_ertrag_durchschnitt=round(spez_ertrag_durchschnitt, 1),
-            spez_ertrag_region=round(spez_ertrag_region, 1),
-            rang_gesamt=rang_gesamt,
-            anzahl_anlagen_gesamt=anzahl_mit_daten,
-            rang_region=rang_region,
-            anzahl_anlagen_region=anzahl_region_mit_daten,
-        ),
+        "benchmark": benchmark_daten,
         "benchmark_erweitert": erweiterte_benchmarks,
         "zeitraum": zeitraum,
         "zeitraum_label": zeitraum_labels.get(zeitraum, zeitraum),
@@ -1074,12 +1047,16 @@ async def get_vergleich(
     ertraege_alle = []
     ertraege_region = []
 
+    jahresertraege = await lade_spez_jahresertraege(
+        db, anlage_ids=[a.id for a in anlagen]
+    )
     for anlage in anlagen:
-        spez = await berechne_spez_jahresertrag(db, anlage.id, anlage.kwp)
-        if spez > 0:
-            ertraege_alle.append(spez)
-            if anlage.region == region.upper():
-                ertraege_region.append(spez)
+        spez = jahresertraege.get(anlage.id)
+        if spez is None or spez.wert is None:
+            continue
+        ertraege_alle.append(spez.wert)
+        if anlage.region == region.upper():
+            ertraege_region.append(spez.wert)
 
     avg_spez = sum(ertraege_alle) / len(ertraege_alle) if ertraege_alle else 0
     avg_spez_region = sum(ertraege_region) / len(ertraege_region) if ertraege_region else None

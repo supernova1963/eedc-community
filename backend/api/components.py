@@ -33,9 +33,20 @@ router = APIRouter(prefix="/components", tags=["Komponenten Deep-Dives"])
 
 #: Mindestlaufzeit für einen belastbaren Wirkungsgrad. Darunter dominiert der
 #: Ladestand-Übertrag über die Zeitraumgrenzen (was am Monatsende im Speicher
-#: steht, wird erst im Folgemonat entladen). Identisch mit der Schwelle, die
-#: die Zyklen in derselben Tabellenzeile seit jeher verwenden.
+#: steht, wird erst im Folgemonat entladen). Bis zum 17.09.2026 war das auch
+#: die Schwelle der Zyklen in derselben Zeile — die verlangen seit eedc N-291
+#: ein volles Jahr (`ZYKLEN_MIN_MONATE`), weil sie sonst hochrechnen müssten.
 WIRKUNGSGRAD_MIN_MONATE = 6
+
+#: Vollladezyklen je Jahr gibt es nur aus einem VOLLEN Jahr im Fenster (eedc
+#: N-291, 17.09.2026). Hier stand `(entladung / anzahl_monate) * 12` hinter der
+#: Sechs-Monats-Schwelle — dieselbe flache Hochrechnung wie #387 auf der
+#: PV-Achse: sechs Sommermonate ergaben zu viele Zyklen, sechs Wintermonate zu
+#: wenige, und eine junge Anlage stand mit dem Faktor 2 neben vollen Jahren.
+#: Für die Entladung gibt es keinen anlagenindividuellen Maßstab wie die
+#: PVGIS-Erwartung der PV — also wird nicht hochgerechnet, sondern gewartet.
+#: Der Wirkungsgrad daneben ist ein Quotient zweier Summen und braucht das nicht.
+ZYKLEN_MIN_MONATE = 12
 
 #: Physikalisch mögliches Band. Über 100 % kann kein Speicher; unter 50 % auch
 #: keiner, der in Betrieb ist. Werte außerhalb sind Messfehler — typisch eine
@@ -280,11 +291,10 @@ async def get_speicher_by_class(db: AsyncSession = Depends(get_db)):
                 )
                 anzahl_monate = monate_result.scalar() or 0
 
-                if anzahl_monate >= WIRKUNGSGRAD_MIN_MONATE and entladung > 0:
-                    # Hochrechnung auf Jahr
-                    jahres_entladung = (entladung / anzahl_monate) * 12
-                    zyklen = jahres_entladung / anlage.speicher_kwh
-                    zyklen_liste.append(zyklen)
+                # Zwölf Entlade-Monate im Fenster = ein Jahr; keine Hochrechnung
+                # (eedc N-291, Begründung bei `ZYKLEN_MIN_MONATE`).
+                if anzahl_monate >= ZYKLEN_MIN_MONATE and entladung > 0:
+                    zyklen_liste.append(entladung / anlage.speicher_kwh)
 
         klassen.append(SpeicherKlasse(
             von_kwh=von,
@@ -293,7 +303,10 @@ async def get_speicher_by_class(db: AsyncSession = Depends(get_db)):
             # Median: ein einzelner absurder Wert kippt ihn nicht. Genau das
             # war die Ursache der 128,6 %, die ein Nutzer am 08.08. gemeldet hat.
             durchschnitt_wirkungsgrad=_median(wirkungsgrade),
-            durchschnitt_zyklen=round(sum(zyklen_liste) / len(zyklen_liste), 0) if zyklen_liste else None,
+            # Median wie die beiden Nachbarn — bis zum 17.09.2026 stand hier als
+            # einzige Zahl der Zeile ein arithmetisches Mittel, in dem ein
+            # Ausreißer voll durchschlug (eedc N-291).
+            durchschnitt_zyklen=_median(zyklen_liste),
             durchschnitt_netz_anteil=_median(netz_anteile),
             anzahl_wirkungsgrad=len(wirkungsgrade),
             verworfen_wirkungsgrad=verworfen_wirkungsgrad,

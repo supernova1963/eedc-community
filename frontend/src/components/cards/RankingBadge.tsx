@@ -1,4 +1,21 @@
-export default function RankingBadge({ rang, total, label }: { rang: number; total: number; label: string }) {
+/**
+ * Rang-Abzeichen. `rang` darf `null` sein (eedc #387, 17.09.2026): Eine Anlage
+ * ohne Jahreswert hat keinen Rang — vorher meldete der Server ersatzweise die 1,
+ * und diese Karte zeigte dafür eine Goldmedaille.
+ */
+export default function RankingBadge({ rang, total, label }: { rang: number | null; total: number; label: string }) {
+  if (rang === null || rang === undefined || total <= 0) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 text-center">
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">{label}</p>
+        <p className="text-4xl font-bold text-gray-400 dark:text-gray-500">—</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+          {total > 0 ? `${total} Anlagen im Vergleich` : 'noch kein Vergleich'}
+        </p>
+      </div>
+    )
+  }
+
   const prozent = ((total - rang + 1) / total) * 100
   const medalColor = rang === 1 ? 'text-yellow-500' : rang === 2 ? 'text-gray-400' : rang === 3 ? 'text-amber-600' : 'text-gray-600 dark:text-gray-400'
   const medal = rang <= 3 ? ['🥇', '🥈', '🥉'][rang - 1] : `#${rang}`

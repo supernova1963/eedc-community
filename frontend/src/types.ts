@@ -97,14 +97,28 @@ export interface AnlageData {
   monatswerte: Monatswert[]
 }
 
+/**
+ * Vergleichsdaten der eigenen Anlage (eedc #387, Server-Hälfte 17.09.2026).
+ *
+ * Die Ertragsfelder und Ränge dürfen `null` sein: Der Jahreswert entsteht aus
+ * zwölf lückenlosen Monaten oder wird saisonal hochgerechnet (`basis_monate`
+ * unter 12); ohne Maßstab oder bei veralteten Daten gibt es keinen Wert und
+ * keinen Rang — und `basis_grund` sagt, warum.
+ */
 export interface BenchmarkData {
-  spez_ertrag_anlage: number
-  spez_ertrag_durchschnitt: number
-  spez_ertrag_region: number
-  rang_gesamt: number
+  spez_ertrag_anlage: number | null
+  spez_ertrag_durchschnitt: number | null
+  spez_ertrag_region: number | null
+  rang_gesamt: number | null
   anzahl_anlagen_gesamt: number
-  rang_region: number
+  rang_region: number | null
   anzahl_anlagen_region: number
+  basis_monate?: number
+  fenster_monate?: number
+  basis_bis_jahr?: number | null
+  basis_bis_monat?: number | null
+  basis_veraltet?: boolean
+  basis_grund?: string | null
 }
 
 // Erweiterte Benchmark-Typen

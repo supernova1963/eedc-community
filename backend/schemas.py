@@ -400,14 +400,45 @@ class SubmitResponse(BaseModel):
 
 
 class BenchmarkData(BaseModel):
-    """Vergleichsdaten für die eingereichte Anlage."""
-    spez_ertrag_anlage: float  # kWh/kWp der Anlage (letztes Jahr)
-    spez_ertrag_durchschnitt: float  # Durchschnitt aller Anlagen
-    spez_ertrag_region: float  # Durchschnitt der Region
-    rang_gesamt: int  # Platzierung gesamt
+    """Vergleichsdaten für die eingereichte Anlage.
+
+    **Seit eedc #387 (Server-Hälfte gebaut 17.09.2026) dürfen die Ertragsfelder
+    ``None`` sein.** Der spezifische Jahresertrag entsteht aus zwölf lückenlosen
+    Kalendermonaten; hat die Anlage weniger, wird **saisonal** hochgerechnet —
+    mit der PVGIS-Erwartung des eigenen Standorts als Maßstab, nicht mit dem
+    Faktor zwölf (SoT: ``core/spez_ertrag.py``). ``basis_monate`` sagt, worauf
+    der Wert beruht; der Client zeigt „hochgerechnet aus 5 von 12 Monaten".
+
+    Kein Wert (``None``) gibt es nur noch mit Grund: ``basis_veraltet`` (jüngster
+    Monat älter als ein Jahr) oder ``basis_grund == "kein_massstab"`` (unter zwölf
+    Monaten ohne SOLL — Client vor v4.0.22 oder keine aktive Solarprognose).
+    Dann ist auch der Rang ``None`` — nicht mehr die Vorgabe-Platzierung 1.
+
+    ``anzahl_anlagen_*`` zählt die **Vergleichsgruppe** (Anlagen mit Wert), also
+    dieselbe Grundgesamtheit, in der der Rang vergeben wird.
+
+    Gegenstück im Client: ``eedc/frontend/src/api/community.ts::BenchmarkData``
+    und ``lib/communityFenster.ts`` (dort steht die Anzeige-Regel).
+    """
+    spez_ertrag_anlage: float | None = None  # kWh/kWp — gemessen oder saisonal hochgerechnet
+    spez_ertrag_durchschnitt: float | None = None  # Mittel der Vergleichsgruppe
+    spez_ertrag_region: float | None = None  # Mittel der Vergleichsgruppe in der Region
+    rang_gesamt: int | None = None  # Platzierung in der Vergleichsgruppe
     anzahl_anlagen_gesamt: int
-    rang_region: int  # Platzierung in Region
+    rang_region: int | None = None  # Platzierung in der Region
     anzahl_anlagen_region: int
+    #: Lückenlose Monate ab dem jüngsten abgeschlossenen Monat rückwärts (≤ 12).
+    basis_monate: int = 0
+    #: Länge des Vergleichsfensters — mit so vielen Monaten ist der Wert gemessen.
+    fenster_monate: int = 12
+    #: Ende des Fensters, zum Beschriften („Stand Juli 2026").
+    basis_bis_jahr: int | None = None
+    basis_bis_monat: int | None = None
+    #: Jüngster abgeschlossener Monat liegt mehr als ein Jahr zurück.
+    basis_veraltet: bool = False
+    #: Warum es keinen Wert gibt (``veraltet`` · ``kein_massstab`` · ``keine_monate``
+    #: · ``kein_kwp``), sonst ``None``. Additiv — Clients bis v4.0.46 kennen es nicht.
+    basis_grund: str | None = None
 
 
 class KPIVergleich(BaseModel):
@@ -462,7 +493,8 @@ class BKWBenchmark(BaseModel):
 
 class PVBenchmark(BaseModel):
     """Benchmark-Daten für PV-Anlage."""
-    spez_ertrag: KPIVergleich
+    #: ``None``, wenn die Anlage keinen Jahreswert hat (#387, s. ``BenchmarkData``).
+    spez_ertrag: KPIVergleich | None = None
     eigenverbrauch: KPIVergleich | None = None
     autarkie: KPIVergleich | None = None
 
@@ -635,6 +667,9 @@ class RankingEintrag(BaseModel):
     wert: float
     region: str
     kwp: float
+    #: Nur ``spez_ertrag`` (#387): Monate hinter dem Wert. Unter 12 ist er
+    #: saisonal hochgerechnet, und die Liste darf das sagen. Additiv.
+    basis_monate: int | None = None
 
 
 class Ranking(BaseModel):

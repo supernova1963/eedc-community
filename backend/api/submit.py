@@ -92,40 +92,19 @@ def validate_monatswerte_plausibility(data: AnlageSubmitInput) -> list[str]:
     return warnings
 
 
-async def calculate_benchmark(db: AsyncSession, anlage: Anlage) -> BenchmarkData | None:
+async def calculate_benchmark(db: AsyncSession, anlage: Anlage) -> BenchmarkData:
     """Berechnet Vergleichsdaten für eine Anlage.
 
-    Nutzt dieselben SoT-Helper wie das Dashboard (`/api/benchmark/anlage/...`),
-    damit Submit-Confirmation und Dashboard konsistent rechnen (rollende letzte
-    12 Monate, Mittelwert über pro-Anlage spez. Jahreserträge, echter Rang).
+    Dieselbe Konstruktionsstelle wie das Dashboard
+    (`benchmark.py::baue_benchmark_data`, SoT `core/spez_ertrag.py`, #387):
+    Bestätigung und Dashboard nennen dieselbe Zahl und dieselbe Grundgesamtheit.
+    Bis zum 17.09.2026 zählte „von N" hier ALLE Anlagen, im Dashboard nur die
+    mit Wert. Eine Anlage ohne Jahreswert bekommt kein `None` mehr, sondern die
+    Felder samt Grund — der Client sagt dann, warum.
     """
-    from .benchmark import (
-        berechne_spez_jahresertrag,
-        berechne_community_durchschnitt,
-        berechne_region_durchschnitt,
-        berechne_rang_und_anzahl,
-    )
+    from .benchmark import baue_benchmark_data
 
-    spez_ertrag_anlage = await berechne_spez_jahresertrag(db, anlage.id, anlage.kwp)
-    if spez_ertrag_anlage <= 0:
-        return None
-
-    spez_ertrag_durchschnitt = await berechne_community_durchschnitt(db)
-    spez_ertrag_region = await berechne_region_durchschnitt(db, anlage.region)
-    (rang_gesamt, anzahl_gesamt, _,
-     rang_region, anzahl_region, _) = await berechne_rang_und_anzahl(
-        db, anlage.id, anlage.region
-    )
-
-    return BenchmarkData(
-        spez_ertrag_anlage=round(spez_ertrag_anlage, 1),
-        spez_ertrag_durchschnitt=round(spez_ertrag_durchschnitt, 1),
-        spez_ertrag_region=round(spez_ertrag_region, 1),
-        rang_gesamt=rang_gesamt,
-        anzahl_anlagen_gesamt=anzahl_gesamt,
-        rang_region=rang_region,
-        anzahl_anlagen_region=anzahl_region,
-    )
+    return await baue_benchmark_data(db, anlage)
 
 
 @router.post("", response_model=SubmitResponse)

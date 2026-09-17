@@ -24,8 +24,27 @@ export default function PersonalizedView({
 }) {
   const [activeTab, setActiveTab] = useState<TabId>('uebersicht')
   const { anlage, benchmark: bm } = benchmark
-  const abweichungGesamt = ((bm.spez_ertrag_anlage - bm.spez_ertrag_durchschnitt) / bm.spez_ertrag_durchschnitt) * 100
-  const abweichungRegion = ((bm.spez_ertrag_anlage - bm.spez_ertrag_region) / bm.spez_ertrag_region) * 100
+  // eedc #387 (17.09.2026): Ohne Jahreswert gibt es keinen Rang und keine
+  // Abweichung. Vorher stand hier `bm.spez_ertrag_anlage.toFixed(0)` — ein
+  // `null` vom Server ließ diese Seite abstürzen.
+  const jahreswert = bm.spez_ertrag_anlage
+  const hatJahreswert = typeof jahreswert === 'number'
+  const abweichung = (basis: number | null | undefined): number | null =>
+    typeof jahreswert === 'number' && typeof basis === 'number' && basis > 0
+      ? ((jahreswert - basis) / basis) * 100
+      : null
+  const abweichungGesamt = abweichung(bm.spez_ertrag_durchschnitt)
+  const abweichungRegion = abweichung(bm.spez_ertrag_region)
+  const fenster = bm.fenster_monate ?? 12
+  const hochgerechnet = hatJahreswert && !!bm.basis_monate && bm.basis_monate < fenster
+  const jahreswertHinweis = hatJahreswert
+    ? (hochgerechnet ? `hochgerechnet aus ${bm.basis_monate} von ${fenster} Monaten` : undefined)
+    : bm.basis_veraltet
+      ? 'Deine jüngsten geteilten Daten sind älter als ein Jahr — teile sie erneut.'
+      : bm.basis_grund === 'kein_massstab'
+        ? 'Für die Hochrechnung fehlt die Ertragserwartung deines Standorts — lege in eedc eine Solarprognose an und teile erneut.'
+        : 'Für den Jahresvergleich fehlen noch abgeschlossene Monate.'
+  const fmt = (wert: number | null | undefined) => (typeof wert === 'number' ? wert.toFixed(0) : '—')
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -58,10 +77,11 @@ export default function PersonalizedView({
               <RankingBadge rang={bm.rang_region} total={bm.anzahl_anlagen_region} label={`Rang ${REGION_NAMEN[anlage.region] || anlage.region}`} />
               <KPICard
                 title="Dein Jahresertrag"
-                value={bm.spez_ertrag_anlage.toFixed(0)}
+                value={fmt(jahreswert)}
                 unit="kWh/kWp"
                 highlight
-                comparison={{ value: abweichungGesamt, label: 'vs. Ø' }}
+                subtitle={jahreswertHinweis}
+                comparison={abweichungGesamt !== null ? { value: abweichungGesamt, label: 'vs. Ø' } : undefined}
               />
             </div>
 
@@ -69,21 +89,21 @@ export default function PersonalizedView({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <KPICard
                 title="Community Durchschnitt"
-                value={bm.spez_ertrag_durchschnitt.toFixed(0)}
+                value={fmt(bm.spez_ertrag_durchschnitt)}
                 unit="kWh/kWp"
                 subtitle={`${bm.anzahl_anlagen_gesamt} Anlagen`}
               />
               <KPICard
                 title={`Ø ${REGION_NAMEN[anlage.region] || anlage.region}`}
-                value={bm.spez_ertrag_region.toFixed(0)}
+                value={fmt(bm.spez_ertrag_region)}
                 unit="kWh/kWp"
                 subtitle={`${bm.anzahl_anlagen_region} Anlagen`}
               />
               <KPICard
                 title="Dein Vorteil Region"
-                value={abweichungRegion >= 0 ? `+${abweichungRegion.toFixed(0)}` : abweichungRegion.toFixed(0)}
-                unit="%"
-                subtitle={abweichungRegion >= 0 ? 'über dem Durchschnitt' : 'unter dem Durchschnitt'}
+                value={abweichungRegion === null ? '—' : abweichungRegion >= 0 ? `+${abweichungRegion.toFixed(0)}` : abweichungRegion.toFixed(0)}
+                unit={abweichungRegion === null ? undefined : '%'}
+                subtitle={abweichungRegion === null ? 'kein Jahreswert' : abweichungRegion >= 0 ? 'über dem Durchschnitt' : 'unter dem Durchschnitt'}
               />
             </div>
 

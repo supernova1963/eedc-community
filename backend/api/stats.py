@@ -8,6 +8,11 @@ from sqlalchemy import select, func, case, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import get_db
+from core.spez_ertrag import (
+    durchschnitt,
+    lade_spez_jahresertraege,
+    nur_abgeschlossene_monate,
+)
 from models import Anlage, Monatswert
 from schemas import (
     GesamtStatistik,
@@ -89,44 +94,13 @@ async def get_statistiken(db: AsyncSession = Depends(get_db)):
 
 
 async def berechne_jahresertrag(db: AsyncSession) -> float:
+    """Mittlerer spezifischer Jahresertrag der Vergleichsgruppe.
+
+    Rechnet seit #387 (17.09.2026) nichts mehr flach hoch — SoT
+    ``core/spez_ertrag.py``, dieselbe Zahl wie ``/statistics/global`` und der
+    Add-on-Vergleich (F-46).
     """
-    Berechnet den durchschnittlichen spezifischen Jahresertrag.
-
-    Für jede Anlage: Summe der letzten 12 Monate / kWp
-    Dann Durchschnitt über alle Anlagen.
-    """
-    # Hole alle Anlagen
-    anlagen_result = await db.execute(select(Anlage))
-    anlagen = anlagen_result.scalars().all()
-
-    if not anlagen:
-        return 0
-
-    jahresertraege = []
-
-    for anlage in anlagen:
-        # Letzte 12 Monate für diese Anlage holen
-        monate_detail = await db.execute(
-            select(Monatswert.ertrag_kwh)
-            .where(Monatswert.anlage_id == anlage.id)
-            .order_by(Monatswert.jahr.desc(), Monatswert.monat.desc())
-            .limit(12)
-        )
-        ertraege = [row[0] for row in monate_detail.all() if row[0] is not None]
-
-        if ertraege and anlage.kwp and anlage.kwp > 0:
-            summe_ertrag = sum(ertraege)
-            # Auf 12 Monate hochrechnen wenn weniger vorhanden
-            anzahl_monate = len(ertraege)
-            if anzahl_monate >= 6:  # Mindestens 6 Monate für sinnvolle Hochrechnung
-                jahres_ertrag_hochgerechnet = (summe_ertrag / anzahl_monate) * 12
-                spez_ertrag = jahres_ertrag_hochgerechnet / anlage.kwp
-                jahresertraege.append(spez_ertrag)
-
-    if not jahresertraege:
-        return 0
-
-    return sum(jahresertraege) / len(jahresertraege)
+    return durchschnitt(await lade_spez_jahresertraege(db))
 
 
 async def get_regionen_statistiken(db: AsyncSession) -> list[RegionStatistik]:
@@ -338,46 +312,21 @@ async def get_regionen_statistiken(db: AsyncSession) -> list[RegionStatistik]:
 
 
 async def berechne_region_jahresertrag(db: AsyncSession, region: str) -> float:
-    """Berechnet den spezifischen Jahresertrag für eine Region."""
-    # Hole alle Anlagen dieser Region
-    anlagen_result = await db.execute(
-        select(Anlage).where(Anlage.region == region)
-    )
-    anlagen = anlagen_result.scalars().all()
-
-    if not anlagen:
+    """Mittlerer spezifischer Jahresertrag der Vergleichsgruppe einer Region (SoT #387)."""
+    anlagen_result = await db.execute(select(Anlage.id).where(Anlage.region == region))
+    ids = [row[0] for row in anlagen_result.all()]
+    if not ids:
         return 0
-
-    jahresertraege = []
-
-    for anlage in anlagen:
-        monate_detail = await db.execute(
-            select(Monatswert.ertrag_kwh)
-            .where(Monatswert.anlage_id == anlage.id)
-            .order_by(Monatswert.jahr.desc(), Monatswert.monat.desc())
-            .limit(12)
-        )
-        ertraege = [row[0] for row in monate_detail.all() if row[0] is not None]
-
-        if ertraege and anlage.kwp and anlage.kwp > 0:
-            summe_ertrag = sum(ertraege)
-            anzahl_monate = len(ertraege)
-            if anzahl_monate >= 6:
-                jahres_ertrag_hochgerechnet = (summe_ertrag / anzahl_monate) * 12
-                spez_ertrag = jahres_ertrag_hochgerechnet / anlage.kwp
-                jahresertraege.append(spez_ertrag)
-
-    if not jahresertraege:
-        return 0
-
-    return sum(jahresertraege) / len(jahresertraege)
+    return durchschnitt(await lade_spez_jahresertraege(db, anlage_ids=ids))
 
 
 async def get_monats_statistiken(db: AsyncSession, limit: int = 12) -> list[MonatsStatistik]:
     """Statistiken pro Monat (letzte X Monate)."""
-    # Letzte Monate ermitteln
+    # Letzte ABGESCHLOSSENE Monate ermitteln — der laufende Kalendermonat wäre
+    # ein Bruchstück neben ganzen (Server-F-48, #387).
     result = await db.execute(
         select(Monatswert.jahr, Monatswert.monat)
+        .where(nur_abgeschlossene_monate())
         .distinct()
         .order_by(Monatswert.jahr.desc(), Monatswert.monat.desc())
         .limit(limit)

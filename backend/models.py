@@ -57,8 +57,11 @@ class Anlage(Base):
 
     # Metadaten
     # Jahres-SOLL der aktiven PVGIS-Prognose (kWh), vom Client geliefert — der
-    # Nenner der saisonalen Hochrechnung (eedc #387, Weg A). NULL = Altbestand
-    # oder Client < v4.0.22; dann greift die Kaskade in core/spez_ertrag.py.
+    # Nenner der saisonalen Hochrechnung (eedc #387, Weg A; SoT
+    # core/spez_ertrag.py, gebaut 17.09.2026). NULL = Altbestand, Client < v4.0.22
+    # oder keine aktive Solarprognose: dann gibt es unter zwölf Monaten KEINEN
+    # Jahreswert (`basis_grund = kein_massstab`) — bewusst keine Server-Kaskade,
+    # Begründung im SoT-Docstring.
     soll_jahr_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     erstellt_am: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

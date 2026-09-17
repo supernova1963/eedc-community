@@ -11,6 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from statistics import median, stdev
 
 from core import get_db
+from core.spez_ertrag import (
+    durchschnitt,
+    lade_spez_jahresertraege,
+    nur_abgeschlossene_monate,
+    werte as spez_ertrag_werte,
+)
 from core.wp_jaz import (
     MONATS_ARBEITSZAHL_MAX,
     anlagen_jaz,
@@ -361,9 +367,12 @@ async def get_monthly_averages(
     - PV-Ertrag Tab: Monatliche Vergleichslinie
     - Trends Tab: Community-Trend
     """
-    # Letzte Monate ermitteln
+    # Letzte ABGESCHLOSSENE Monate ermitteln — der laufende Kalendermonat wäre
+    # ein Bruchstück neben ganzen Monaten (Server-F-48, #387; SoT
+    # core/spez_ertrag.py::nur_abgeschlossene_monate).
     result = await db.execute(
         select(Monatswert.jahr, Monatswert.monat)
+        .where(nur_abgeschlossene_monate())
         .distinct()
         .order_by(Monatswert.jahr.desc(), Monatswert.monat.desc())
         .limit(monate)
@@ -543,29 +552,10 @@ async def _hole_metrik_werte(db: AsyncSession, metric: str) -> list[float]:
         return [r[0] for r in result.all() if r[0] is not None]
 
     elif metric == "spez_ertrag":
-        # Spez. Jahresertrag pro Anlage
-        anlagen_result = await db.execute(select(Anlage))
-        anlagen = anlagen_result.scalars().all()
-
-        werte = []
-        for anlage in anlagen:
-            if not anlage.kwp or anlage.kwp <= 0:
-                continue
-
-            monate_result = await db.execute(
-                select(Monatswert.ertrag_kwh)
-                .where(Monatswert.anlage_id == anlage.id)
-                .order_by(Monatswert.jahr.desc(), Monatswert.monat.desc())
-                .limit(12)
-            )
-            ertraege = [r[0] for r in monate_result.all() if r[0] is not None]
-
-            if len(ertraege) >= 6:
-                jahres_ertrag = (sum(ertraege) / len(ertraege)) * 12
-                spez = jahres_ertrag / anlage.kwp
-                werte.append(spez)
-
-        return werte
+        # Spez. Jahresertrag je Anlage — die Vergleichsgruppe des SoT
+        # (core/spez_ertrag.py, #387): dieselben Zahlen wie Rangliste und
+        # Durchschnitt, sonst widerspräche die Verteilung der Liste.
+        return spez_ertrag_werte(await lade_spez_jahresertraege(db))
 
     return []
 
@@ -651,6 +641,7 @@ async def get_ranking(
             wert=round(entry["wert"], 1),
             region=entry["region"],
             kwp=round(entry["kwp"], 1),
+            basis_monate=entry.get("basis_monate"),
         ))
 
     return Ranking(
@@ -669,41 +660,42 @@ async def _berechne_ranking(db: AsyncSession, category: str) -> list[dict]:
     anlagen_result = await db.execute(select(Anlage))
     anlagen = anlagen_result.scalars().all()
 
+    # Spez. Ertrag: ein Bündel-Load aus dem SoT statt einer Abfrage je Anlage
+    # (core/spez_ertrag.py, #387). `basis_monate` wandert in die Zeile, damit
+    # ein hochgerechneter Eintrag in der Liste als solcher lesbar ist.
+    spez_ertraege = (
+        await lade_spez_jahresertraege(db) if category == "spez_ertrag" else {}
+    )
+
     ranking = []
 
     for anlage in anlagen:
-        wert = await _berechne_ranking_wert(db, anlage, category)
+        if category == "spez_ertrag":
+            eintrag = spez_ertraege.get(anlage.id)
+            wert = eintrag.wert if eintrag is not None else None
+            basis_monate = eintrag.basis_monate if eintrag is not None else None
+        else:
+            wert = await _berechne_ranking_wert(db, anlage, category)
+            basis_monate = None
         if wert is not None:
             ranking.append({
                 "hash": anlage.anlage_hash,
                 "wert": wert,
                 "region": anlage.region,
                 "kwp": anlage.kwp,
+                "basis_monate": basis_monate,
             })
 
     return ranking
 
 
 async def _berechne_ranking_wert(db: AsyncSession, anlage, category: str) -> float | None:
-    """Berechnet den Ranking-Wert für eine Anlage und Kategorie."""
-    if category == "spez_ertrag":
-        if not anlage.kwp or anlage.kwp <= 0:
-            return None
+    """Berechnet den Ranking-Wert für eine Anlage und Kategorie.
 
-        monate_result = await db.execute(
-            select(Monatswert.ertrag_kwh)
-            .where(Monatswert.anlage_id == anlage.id)
-            .order_by(Monatswert.jahr.desc(), Monatswert.monat.desc())
-            .limit(12)
-        )
-        ertraege = [r[0] for r in monate_result.all() if r[0] is not None]
-
-        if len(ertraege) >= 6:
-            jahres_ertrag = (sum(ertraege) / len(ertraege)) * 12
-            return jahres_ertrag / anlage.kwp
-        return None
-
-    elif category == "autarkie":
+    ``spez_ertrag`` läuft nicht mehr hier durch — `_berechne_ranking` lädt ihn
+    als Bündel aus dem SoT (core/spez_ertrag.py, #387).
+    """
+    if category == "autarkie":
         result = await db.execute(
             select(func.avg(Monatswert.autarkie_prozent))
             .where(Monatswert.anlage_id == anlage.id)
@@ -785,37 +777,10 @@ async def _berechne_ranking_wert(db: AsyncSession, anlage, category: str) -> flo
 # =============================================================================
 
 async def berechne_community_jahresertrag(db: AsyncSession) -> float:
+    """Mittlerer spezifischer Jahresertrag der Vergleichsgruppe.
+
+    Seit #387 (17.09.2026) dieselbe Grundgesamtheit wie Rangliste, Histogramm
+    und Add-on-Vergleich — SoT ``core/spez_ertrag.py``. Das war **F-46**:
+    Website 862,0 gegen Add-on 688,5 für dieselbe Größe am selben Tag.
     """
-    Berechnet den durchschnittlichen spezifischen Jahresertrag der Community.
-    """
-    # Hole alle Anlagen
-    anlagen_result = await db.execute(select(Anlage))
-    anlagen = anlagen_result.scalars().all()
-
-    if not anlagen:
-        return 0
-
-    jahresertraege = []
-
-    for anlage in anlagen:
-        # Letzte 12 Monate für diese Anlage holen
-        monate_detail = await db.execute(
-            select(Monatswert.ertrag_kwh)
-            .where(Monatswert.anlage_id == anlage.id)
-            .order_by(Monatswert.jahr.desc(), Monatswert.monat.desc())
-            .limit(12)
-        )
-        ertraege = [row[0] for row in monate_detail.all() if row[0] is not None]
-
-        if ertraege and anlage.kwp and anlage.kwp > 0:
-            summe_ertrag = sum(ertraege)
-            anzahl_monate = len(ertraege)
-            if anzahl_monate >= 6:  # Mindestens 6 Monate für sinnvolle Hochrechnung
-                jahres_ertrag_hochgerechnet = (summe_ertrag / anzahl_monate) * 12
-                spez_ertrag = jahres_ertrag_hochgerechnet / anlage.kwp
-                jahresertraege.append(spez_ertrag)
-
-    if not jahresertraege:
-        return 0
-
-    return sum(jahresertraege) / len(jahresertraege)
+    return durchschnitt(await lade_spez_jahresertraege(db))
