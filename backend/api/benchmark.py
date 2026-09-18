@@ -15,6 +15,7 @@ from core.spez_ertrag import (
     durchschnitt,
     lade_spez_jahresertrag,
     lade_spez_jahresertraege,
+    nur_abgeschlossene_monate,
 )
 from core.wp_jaz import (
     MONATS_ARBEITSZAHL_MAX,
@@ -98,7 +99,9 @@ async def berechne_speicher_kpis(
             func.sum(Monatswert.speicher_ladung_kwh),
             func.sum(Monatswert.speicher_entladung_kwh),
             func.sum(Monatswert.speicher_ladung_netz_kwh),
-            func.count(Monatswert.id),
+            # N-524: die Basis sind die Monate MIT Speicherwert — COUNT(id)
+            # zählte auch Zeilen ohne ihn und machte die Hochrechnung schief.
+            func.count(Monatswert.speicher_entladung_kwh),
         )
         .where(Monatswert.anlage_id == anlage_id)
         .where(
@@ -109,6 +112,9 @@ async def berechne_speicher_kpis(
             (Monatswert.jahr < bis_jahr) |
             ((Monatswert.jahr == bis_jahr) & (Monatswert.monat <= bis_monat))
         )
+        # F-76 (18.09.2026): der laufende Kalendermonat zählt in KEINEM Aggregat
+        # (Server-F-48) — auf beiden Seiten des Vergleichs, mit derselben Filterzeile.
+        .where(nur_abgeschlossene_monate())
     )
     row = result.first()
     if not row or not row[0]:
@@ -151,6 +157,9 @@ async def berechne_speicher_kpis(
         "zyklen_jahr": round(zyklen, 0),
         "wirkungsgrad": round(wirkungsgrad, 1) if wirkungsgrad else None,
         "netz_anteil": round(netz_anteil, 1) if netz_anteil else None,
+        # N-524: worauf die Hochrechnung steht („aus 5 von 12 Monaten") — die
+        # Klasse, die #387 für den spez. Ertrag geschlossen hat.
+        "basis_monate": int(monate or 0),
     }
 
 
@@ -259,6 +268,9 @@ async def berechne_eauto_kpis(
             (Monatswert.jahr < bis_jahr) |
             ((Monatswert.jahr == bis_jahr) & (Monatswert.monat <= bis_monat))
         )
+        # F-76 (18.09.2026): der laufende Kalendermonat zählt in KEINEM Aggregat
+        # (Server-F-48) — auf beiden Seiten des Vergleichs, mit derselben Filterzeile.
+        .where(nur_abgeschlossene_monate())
     )
     row = result.first()
     if not row or not row[0]:
@@ -285,7 +297,7 @@ async def berechne_eauto_kpis(
     }
 
 
-async def berechne_community_avg_jaz(db: AsyncSession, wp_art: str | None = None) -> float | None:
+async def berechne_community_avg_jaz(db: AsyncSession, wp_art: str | None = None) -> tuple[float | None, int]:
     """
     Berechnet den Community-Durchschnitt für JAZ.
 
@@ -307,28 +319,42 @@ async def berechne_community_avg_jaz(db: AsyncSession, wp_art: str | None = None
     result = await db.execute(anlagen_filter(wp_art=wp_art))
     anlage_ids = [row[0] for row in result.all()]
     if not anlage_ids:
-        return None
-    schnitt, _ = await durchschnitts_jaz(db, anlage_ids)
-    return schnitt
+        return None, 0
+    # F-76 (18.09.2026): n reist mit — die Route trug `KPIVergleich.von` nie,
+    # obwohl `durchschnitts_jaz` es liefert.
+    return await durchschnitts_jaz(db, anlage_ids)
 
 
-async def berechne_community_avg_pv_anteil_eauto(db: AsyncSession) -> float | None:
-    """Berechnet den Community-Durchschnitt für E-Auto PV-Anteil."""
+async def berechne_community_avg_pv_anteil_eauto(
+    db: AsyncSession,
+    von_jahr: int, von_monat: int, bis_jahr: int, bis_monat: int,
+) -> tuple[float | None, int]:
+    """Community-Ø des E-Auto-PV-Anteils **im Fenster des eigenen Werts** — und n.
+
+    ⛔ **F-76 (18.09.2026):** Bis dahin rechnete diese Seite fest 2020-01…2099-12
+    — die ganze Historie jeder Anlage samt laufendem Monat —, während der eigene
+    Wert daneben das angefragte Fenster (zwölf abgeschlossene Monate) nahm.
+    Gemessen: 50,0 % eigen gegen Ø 23,3 %. Die Kachel verglich zwei verschieden
+    gebildete Größen und nannte es einen Vergleich. Jetzt bekommt der Ø dasselbe
+    Fenster und nennt seine Grundgesamtheit (``KPIVergleich.von``).
+    """
     result = await db.execute(
         select(Anlage.id).where(Anlage.hat_eauto == True)
     )
     anlage_ids = [row[0] for row in result.all()]
 
     if not anlage_ids:
-        return None
+        return None, 0
 
     pv_anteile = []
     for aid in anlage_ids:
-        ea = await berechne_eauto_kpis(db, aid, 2020, 1, 2099, 12)
+        ea = await berechne_eauto_kpis(db, aid, von_jahr, von_monat, bis_jahr, bis_monat)
         if ea and ea.get("pv_anteil"):
             pv_anteile.append(ea["pv_anteil"])
 
-    return sum(pv_anteile) / len(pv_anteile) if pv_anteile else None
+    if not pv_anteile:
+        return None, 0
+    return sum(pv_anteile) / len(pv_anteile), len(pv_anteile)
 
 
 async def berechne_wallbox_kpis(
@@ -354,6 +380,9 @@ async def berechne_wallbox_kpis(
             (Monatswert.jahr < bis_jahr) |
             ((Monatswert.jahr == bis_jahr) & (Monatswert.monat <= bis_monat))
         )
+        # F-76 (18.09.2026): der laufende Kalendermonat zählt in KEINEM Aggregat
+        # (Server-F-48) — auf beiden Seiten des Vergleichs, mit derselben Filterzeile.
+        .where(nur_abgeschlossene_monate())
     )
     row = result.first()
     if not row or not row[0]:
@@ -376,23 +405,28 @@ async def berechne_wallbox_kpis(
     }
 
 
-async def berechne_community_avg_pv_anteil_wallbox(db: AsyncSession) -> float | None:
-    """Berechnet den Community-Durchschnitt für Wallbox PV-Anteil."""
+async def berechne_community_avg_pv_anteil_wallbox(
+    db: AsyncSession,
+    von_jahr: int, von_monat: int, bis_jahr: int, bis_monat: int,
+) -> tuple[float | None, int]:
+    """Community-Ø des Wallbox-PV-Anteils im Fenster des eigenen Werts — und n (F-76, s. E-Auto)."""
     result = await db.execute(
         select(Anlage.id).where(Anlage.hat_wallbox == True)
     )
     anlage_ids = [row[0] for row in result.all()]
 
     if not anlage_ids:
-        return None
+        return None, 0
 
     pv_anteile = []
     for aid in anlage_ids:
-        wb = await berechne_wallbox_kpis(db, aid, 2020, 1, 2099, 12)
+        wb = await berechne_wallbox_kpis(db, aid, von_jahr, von_monat, bis_jahr, bis_monat)
         if wb and wb.get("pv_anteil"):
             pv_anteile.append(wb["pv_anteil"])
 
-    return sum(pv_anteile) / len(pv_anteile) if pv_anteile else None
+    if not pv_anteile:
+        return None, 0
+    return sum(pv_anteile) / len(pv_anteile), len(pv_anteile)
 
 
 async def berechne_bkw_kpis(
@@ -410,7 +444,8 @@ async def berechne_bkw_kpis(
         select(
             func.sum(Monatswert.bkw_erzeugung_kwh),
             func.sum(Monatswert.bkw_eigenverbrauch_kwh),
-            func.count(Monatswert.id),
+            # Basis = Monate MIT BKW-Wert (F-76-Bau; COUNT(id) zählte PV-Zeilen mit)
+            func.count(Monatswert.bkw_erzeugung_kwh),
         )
         .where(Monatswert.anlage_id == anlage_id)
         .where(
@@ -421,6 +456,9 @@ async def berechne_bkw_kpis(
             (Monatswert.jahr < bis_jahr) |
             ((Monatswert.jahr == bis_jahr) & (Monatswert.monat <= bis_monat))
         )
+        # F-76 (18.09.2026): der laufende Kalendermonat zählt in KEINEM Aggregat
+        # (Server-F-48) — auf beiden Seiten des Vergleichs, mit derselben Filterzeile.
+        .where(nur_abgeschlossene_monate())
     )
     row = result.first()
     if not row or not row[0]:
@@ -450,8 +488,16 @@ async def berechne_bkw_kpis(
     }
 
 
-async def berechne_community_avg_bkw_spez_ertrag(db: AsyncSession) -> float | None:
-    """Berechnet den Community-Durchschnitt für BKW spez. Ertrag."""
+async def berechne_community_avg_bkw_spez_ertrag(
+    db: AsyncSession,
+    von_jahr: int, von_monat: int, bis_jahr: int, bis_monat: int,
+) -> tuple[float | None, int]:
+    """Community-Ø des BKW-spez.-Ertrags im Fenster des eigenen Werts — und n (F-76).
+
+    ⚠ Mit dem festen Fenster summierte der Ø ab zwölf Zeilen **ganze Jahre**
+    (kein ×12/n ab 12 Monaten): eine Anlage mit drei Jahren à 60 kWh/Monat stand
+    mit 2.700 kWh/kWp im Ø neben ihren eigenen 900.
+    """
     result = await db.execute(
         select(Anlage.id, Anlage.bkw_wp)
         .where(Anlage.hat_balkonkraftwerk == True)
@@ -460,15 +506,17 @@ async def berechne_community_avg_bkw_spez_ertrag(db: AsyncSession) -> float | No
     anlagen = result.all()
 
     if not anlagen:
-        return None
+        return None, 0
 
     spez_ertraege = []
     for aid, bkw_wp in anlagen:
-        bkw = await berechne_bkw_kpis(db, aid, bkw_wp, 2020, 1, 2099, 12)
+        bkw = await berechne_bkw_kpis(db, aid, bkw_wp, von_jahr, von_monat, bis_jahr, bis_monat)
         if bkw and bkw.get("spez_ertrag"):
             spez_ertraege.append(bkw["spez_ertrag"])
 
-    return sum(spez_ertraege) / len(spez_ertraege) if spez_ertraege else None
+    if not spez_ertraege:
+        return None, 0
+    return sum(spez_ertraege) / len(spez_ertraege), len(spez_ertraege)
 
 
 async def berechne_community_durchschnitt(db: AsyncSession) -> float:
@@ -670,6 +718,7 @@ async def get_anlage_benchmark(
         if speicher_kpis:
             speicher_benchmark = SpeicherBenchmark(
                 kapazitaet=KPIVergleich(wert=anlage.speicher_kwh),
+                basis_monate=speicher_kpis.get("basis_monate"),
                 zyklen_jahr=KPIVergleich(wert=speicher_kpis["zyklen_jahr"]) if speicher_kpis.get("zyklen_jahr") else None,
                 wirkungsgrad=KPIVergleich(wert=speicher_kpis["wirkungsgrad"]) if speicher_kpis.get("wirkungsgrad") else None,
                 netz_anteil=KPIVergleich(wert=speicher_kpis["netz_anteil"]) if speicher_kpis.get("netz_anteil") else None,
@@ -686,20 +735,22 @@ async def get_anlage_benchmark(
             # zu stellen, in dem man nicht vorkommt, wäre die zweite Hälfte
             # derselben Falschaussage.
             kuehlt_passiv = anlage.kuehlung_art == "passiv"
-            community_jaz = None if kuehlt_passiv else await berechne_community_avg_jaz(db)
+            community_jaz, jaz_n = (None, 0) if kuehlt_passiv else await berechne_community_avg_jaz(db)
             # Typ-spezifischer JAZ-Vergleich (nur mit gleicher WP-Art)
             jaz_typ_vergleich = None
             if anlage.wp_art and wp_kpis.get("jaz") and not kuehlt_passiv:
-                community_jaz_typ = await berechne_community_avg_jaz(db, wp_art=anlage.wp_art)
+                community_jaz_typ, jaz_typ_n = await berechne_community_avg_jaz(db, wp_art=anlage.wp_art)
                 if community_jaz_typ is not None:
                     jaz_typ_vergleich = KPIVergleich(
                         wert=wp_kpis["jaz"],
                         community_avg=round(community_jaz_typ, 2),
+                        von=jaz_typ_n,
                     )
             wp_benchmark = WaermepumpeBenchmark(
                 jaz=KPIVergleich(
                     wert=wp_kpis["jaz"],
                     community_avg=community_jaz,
+                    von=jaz_n if community_jaz is not None else None,
                 ) if wp_kpis.get("jaz") else None,
                 jaz_typ=jaz_typ_vergleich,
                 wp_art=anlage.wp_art,
@@ -712,12 +763,16 @@ async def get_anlage_benchmark(
     if anlage.hat_eauto:
         eauto_kpis = await berechne_eauto_kpis(db, anlage.id, von_jahr, von_monat, bis_jahr, bis_monat)
         if eauto_kpis:
-            community_pv_anteil = await berechne_community_avg_pv_anteil_eauto(db)
+            # F-76: der Ø bekommt das Fenster des eigenen Werts und nennt n.
+            community_pv_anteil, eauto_n = await berechne_community_avg_pv_anteil_eauto(
+                db, von_jahr, von_monat, bis_jahr, bis_monat
+            )
             eauto_benchmark = EAutoBenchmark(
                 ladung_gesamt=KPIVergleich(wert=eauto_kpis["ladung_gesamt"]) if eauto_kpis.get("ladung_gesamt") else None,
                 pv_anteil=KPIVergleich(
                     wert=eauto_kpis["pv_anteil"],
                     community_avg=round(community_pv_anteil, 1) if community_pv_anteil else None,
+                    von=eauto_n if community_pv_anteil else None,
                 ) if eauto_kpis.get("pv_anteil") else None,
                 km=KPIVergleich(wert=eauto_kpis["km"]) if eauto_kpis.get("km") else None,
                 verbrauch_100km=KPIVergleich(wert=eauto_kpis["verbrauch_100km"]) if eauto_kpis.get("verbrauch_100km") else None,
@@ -729,12 +784,15 @@ async def get_anlage_benchmark(
     if anlage.hat_wallbox:
         wallbox_kpis = await berechne_wallbox_kpis(db, anlage.id, von_jahr, von_monat, bis_jahr, bis_monat)
         if wallbox_kpis:
-            community_pv_anteil_wb = await berechne_community_avg_pv_anteil_wallbox(db)
+            community_pv_anteil_wb, wallbox_n = await berechne_community_avg_pv_anteil_wallbox(
+                db, von_jahr, von_monat, bis_jahr, bis_monat
+            )
             wallbox_benchmark = WallboxBenchmark(
                 ladung=KPIVergleich(wert=wallbox_kpis["ladung"]) if wallbox_kpis.get("ladung") else None,
                 pv_anteil=KPIVergleich(
                     wert=wallbox_kpis["pv_anteil"],
                     community_avg=round(community_pv_anteil_wb, 1) if community_pv_anteil_wb else None,
+                    von=wallbox_n if community_pv_anteil_wb else None,
                 ) if wallbox_kpis.get("pv_anteil") else None,
                 ladevorgaenge=KPIVergleich(wert=wallbox_kpis["ladevorgaenge"]) if wallbox_kpis.get("ladevorgaenge") else None,
             )
@@ -744,12 +802,15 @@ async def get_anlage_benchmark(
     if anlage.hat_balkonkraftwerk and anlage.bkw_wp and anlage.bkw_wp > 0:
         bkw_kpis = await berechne_bkw_kpis(db, anlage.id, anlage.bkw_wp, von_jahr, von_monat, bis_jahr, bis_monat)
         if bkw_kpis:
-            community_spez_ertrag_bkw = await berechne_community_avg_bkw_spez_ertrag(db)
+            community_spez_ertrag_bkw, bkw_n = await berechne_community_avg_bkw_spez_ertrag(
+                db, von_jahr, von_monat, bis_jahr, bis_monat
+            )
             bkw_benchmark = BKWBenchmark(
                 erzeugung=KPIVergleich(wert=bkw_kpis["erzeugung"]) if bkw_kpis.get("erzeugung") else None,
                 spez_ertrag=KPIVergleich(
                     wert=bkw_kpis["spez_ertrag"],
                     community_avg=round(community_spez_ertrag_bkw, 0) if community_spez_ertrag_bkw else None,
+                    von=bkw_n if community_spez_ertrag_bkw else None,
                 ) if bkw_kpis.get("spez_ertrag") else None,
                 eigenverbrauch=KPIVergleich(wert=bkw_kpis["eigenverbrauch_quote"]) if bkw_kpis.get("eigenverbrauch_quote") else None,
             )

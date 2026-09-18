@@ -462,6 +462,10 @@ class KPIVergleich(BaseModel):
 class SpeicherBenchmark(BaseModel):
     """Benchmark-Daten für Speicher."""
     kapazitaet: KPIVergleich | None = None
+    #: N-524 (18.09.2026): worauf Zyklen/Jahr stehen — Monate mit Speicherwert im
+    #: Fenster; unter zwölf ist die Zyklenzahl hochgerechnet (×12/n). Dieselbe
+    #: Auskunft wie ``BenchmarkData.basis_monate`` für den spez. Ertrag (#387).
+    basis_monate: int | None = None
     zyklen_jahr: KPIVergleich | None = None
     nutzungsgrad: KPIVergleich | None = None
     wirkungsgrad: KPIVergleich | None = None

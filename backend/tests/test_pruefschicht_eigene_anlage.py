@@ -119,10 +119,12 @@ async def test_eauto_identitaet_ein_wert_fuer_beide_seiten(db):
     kpi = (await _kachel(db, anlage)).eauto.pv_anteil
     assert kpi.wert == 50.0
     assert kpi.community_avg == kpi.wert
-    assert await benchmark_api.berechne_community_avg_pv_anteil_eauto(db) == 50.0
+    # F-76: die Ø-Seite bekommt das Fenster des eigenen Werts und liefert (Ø, n)
+    assert await benchmark_api.berechne_community_avg_pv_anteil_eauto(
+        db, *benchmark_api.get_zeitraum_filter("letzte_12_monate")
+    ) == (50.0, 1)
 
 
-@pytest.mark.xfail(strict=True, reason="F-76: n fehlt auf der E-Auto-Achse (KPIVergleich.von bleibt None) — Fund am 18.09.2026 gezeigt, Bau offen")
 @pytest.mark.asyncio
 async def test_eauto_vergleichswert_nennt_seine_grundgesamtheit(db):
     """Zwei Anlagen mit E-Auto, eine trägt einen Wert bei — n ist 1 (nicht 2, nicht None)."""
@@ -139,7 +141,6 @@ async def test_eauto_vergleichswert_nennt_seine_grundgesamtheit(db):
     )
 
 
-@pytest.mark.xfail(strict=True, reason="F-76: der laufende Monat zaehlt im Oe mit, im eigenen Wert nicht (benchmark.py:315 ohne nur_abgeschlossene_monate) — Fund am 18.09.2026 gezeigt, Bau offen")
 @pytest.mark.asyncio
 async def test_eauto_laufender_monat_zaehlt_auf_keiner_seite(db):
     """F-48: ein halber Monat mit 100 % PV darf den Ø nicht heben, wenn er den eigenen Wert nicht hebt."""
@@ -154,7 +155,6 @@ async def test_eauto_laufender_monat_zaehlt_auf_keiner_seite(db):
     )
 
 
-@pytest.mark.xfail(strict=True, reason="F-76: der Oe rechnet fest 2020-2099, der eigene Wert das angefragte Fenster (benchmark.py:327) — Fund am 18.09.2026 gezeigt, Bau offen")
 @pytest.mark.asyncio
 async def test_eauto_vergleichswert_folgt_dem_fenster_des_eigenen_werts(db):
     """Drei Jahre geteilt: zwölf Monate mit 50 %, davor 24 mit 10 %. Beide Seiten dasselbe Fenster."""
@@ -203,10 +203,12 @@ async def test_wallbox_identitaet_ein_wert_fuer_beide_seiten(db):
     kpi = (await _kachel(db, anlage)).wallbox.pv_anteil
     assert kpi.wert == 50.0
     assert kpi.community_avg == kpi.wert
-    assert await benchmark_api.berechne_community_avg_pv_anteil_wallbox(db) == 50.0
+    # F-76: die Ø-Seite bekommt das Fenster des eigenen Werts und liefert (Ø, n)
+    assert await benchmark_api.berechne_community_avg_pv_anteil_wallbox(
+        db, *benchmark_api.get_zeitraum_filter("letzte_12_monate")
+    ) == (50.0, 1)
 
 
-@pytest.mark.xfail(strict=True, reason="F-76: n fehlt auf der Wallbox-Achse — Fund am 18.09.2026 gezeigt, Bau offen")
 @pytest.mark.asyncio
 async def test_wallbox_vergleichswert_nennt_seine_grundgesamtheit(db):
     traegt = await _anlage(db, "a", hat_wallbox=True)
@@ -221,7 +223,6 @@ async def test_wallbox_vergleichswert_nennt_seine_grundgesamtheit(db):
     )
 
 
-@pytest.mark.xfail(strict=True, reason="F-76: laufender Monat nur im Oe (benchmark.py:379) — Fund am 18.09.2026 gezeigt, Bau offen")
 @pytest.mark.asyncio
 async def test_wallbox_laufender_monat_zaehlt_auf_keiner_seite(db):
     anlage = await _anlage(db, "a", hat_wallbox=True)
@@ -234,7 +235,6 @@ async def test_wallbox_laufender_monat_zaehlt_auf_keiner_seite(db):
     )
 
 
-@pytest.mark.xfail(strict=True, reason="F-76: festes Fenster im Oe (benchmark.py:391) — Fund am 18.09.2026 gezeigt, Bau offen")
 @pytest.mark.asyncio
 async def test_wallbox_vergleichswert_folgt_dem_fenster_des_eigenen_werts(db):
     anlage = await _anlage(db, "a", hat_wallbox=True)
@@ -279,10 +279,12 @@ async def test_bkw_identitaet_ein_wert_fuer_beide_seiten(db):
     kpi = (await _kachel(db, anlage)).balkonkraftwerk.spez_ertrag
     assert kpi.wert == BKW_SPEZ_JAHR == 900.0
     assert kpi.community_avg == kpi.wert
-    assert await benchmark_api.berechne_community_avg_bkw_spez_ertrag(db) == 900.0
+    # F-76: die Ø-Seite bekommt das Fenster des eigenen Werts und liefert (Ø, n)
+    assert await benchmark_api.berechne_community_avg_bkw_spez_ertrag(
+        db, *benchmark_api.get_zeitraum_filter("letzte_12_monate")
+    ) == (900.0, 1)
 
 
-@pytest.mark.xfail(strict=True, reason="F-76: n fehlt auf der BKW-Achse — Fund am 18.09.2026 gezeigt, Bau offen")
 @pytest.mark.asyncio
 async def test_bkw_vergleichswert_nennt_seine_grundgesamtheit(db):
     traegt = await _anlage(db, "a", hat_balkonkraftwerk=True, bkw_wp=BKW_WP)
@@ -297,7 +299,6 @@ async def test_bkw_vergleichswert_nennt_seine_grundgesamtheit(db):
     )
 
 
-@pytest.mark.xfail(strict=True, reason="F-76: laufender Monat nur im Oe (benchmark.py:453) — Fund am 18.09.2026 gezeigt, Bau offen")
 @pytest.mark.asyncio
 async def test_bkw_laufender_monat_zaehlt_auf_keiner_seite(db):
     anlage = await _anlage(db, "a", hat_balkonkraftwerk=True, bkw_wp=BKW_WP)
@@ -311,7 +312,6 @@ async def test_bkw_laufender_monat_zaehlt_auf_keiner_seite(db):
     )
 
 
-@pytest.mark.xfail(strict=True, reason="F-76: festes Fenster im Oe, ab 12 Zeilen summiert der Oe ganze Jahre (benchmark.py:441/467) — Fund am 18.09.2026 gezeigt, Bau offen")
 @pytest.mark.asyncio
 async def test_bkw_vergleichswert_folgt_dem_fenster_des_eigenen_werts(db):
     """Drei Jahre je 60 kWh/Monat: 900 kWh/kWp im Jahr — auf beiden Seiten.
@@ -364,7 +364,6 @@ async def test_bkw_monate_ohne_wert_auf_beiden_seiten_gleich_behandelt(db):
 # n / Grundlage: nichts — weder die Funktion (:151) noch das Schema nennen die Monatszahl
 
 
-@pytest.mark.xfail(strict=True, reason="N-524: Speicher-KPIs nennen keine basis_monate (Klasse #387/N-291) — Fund am 18.09.2026 gezeigt, Bau offen")
 @pytest.mark.asyncio
 async def test_speicher_kpis_nennen_ihre_grundlage(db):
     """Fünf Monate → „Zyklen/Jahr" ist eine Hochrechnung; die Antwort muss sagen, worauf sie beruht.
