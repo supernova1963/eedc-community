@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import settings, get_db
 from models import Anlage, Monatswert, RateLimit
-from schemas import AnlageSubmitInput, SubmitResponse, BenchmarkData, DeleteResponse
+from schemas import AnlageSubmitInput, MonatswertInput, SubmitResponse, BenchmarkData, DeleteResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/submit", tags=["Einreichen"])
@@ -52,44 +52,72 @@ async def record_request(db: AsyncSession, ip: str):
     await db.commit()
 
 
-def validate_monatswerte_plausibility(data: AnlageSubmitInput) -> list[str]:
+def validate_monatswerte_plausibility(
+    data: AnlageSubmitInput,
+) -> tuple[list[MonatswertInput], list[str]]:
+    """Prüft die Monatswerte und trennt sie in angenommene und übersprungene.
+
+    **Bis zum 19.09.2026 warf ein einziger unplausibler Monat den GANZEN Submit
+    mit 400 ab** (eedc N-523). Im Proxy-Log stand das als tägliche 400 einer
+    aktuellen 4.0.47-Installation, die damit seit Wochen keinen Datensatz mehr
+    in der Community hatte — der Anwender sah nur „Unrealistischer Ertrag in
+    YYYY-MM" und verlor alle anderen Monate mit.
+
+    Jetzt gilt: der unplausible Monat wird **übersprungen und im Hinweis
+    genannt**, die übrigen Monate werden angenommen. Erst wenn KEIN Monat übrig
+    bleibt, antwortet der Server mit 400 und allen Gründen. Ein übersprungener
+    Monat wird weder gespeichert noch gelöscht — hat der Server für ihn schon
+    einen früher plausiblen Wert, bleibt der stehen (auch beim Voll-Submit mit
+    `monate_vollstaendig`: der Client hat den Monat ja gesendet).
+
+    Die Schwellen sind unverändert: Zukunftsmonat, Ertrag ≤ 0, spezifischer
+    Ertrag über 180 kWh/kWp (ein Sommer-Maßstab; das am 19.08.2026 entschiedene
+    relative Band am SOLL ist davon unabhängig und nicht Teil dieser Änderung).
+
+    Returns:
+        (angenommene Monatswerte, Hinweise) — Hinweise sind Klartext je Monat,
+        übersprungene beginnen mit ``YYYY-MM übersprungen:``.
     """
-    Prüft Plausibilität der Monatswerte.
-    Gibt Liste von Warnungen zurück (leere Liste = alles OK).
-    """
-    warnings = []
+    hinweise: list[str] = []
+    angenommen: list[MonatswertInput] = []
     now = datetime.utcnow()
 
     for mw in data.monatswerte:
+        label = f"{mw.jahr}-{mw.monat:02d}"
+
         # Keine Zukunftsmonate
         if mw.jahr > now.year or (mw.jahr == now.year and mw.monat > now.month):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Zukunftsmonat nicht erlaubt: {mw.jahr}-{mw.monat:02d}"
-            )
+            hinweise.append(f"{label} übersprungen: Zukunftsmonat")
+            continue
 
-        # Kein 0-Ertrag erlaubt
+        # Kein 0-Ertrag
         if mw.ertrag_kwh <= 0:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Ertrag 0 oder negativ in {mw.jahr}-{mw.monat:02d} nicht erlaubt"
-            )
+            hinweise.append(f"{label} übersprungen: Ertrag 0 oder negativ")
+            continue
 
         # Spezifischer Ertrag pro kWp
         spez_ertrag = mw.ertrag_kwh / data.kwp
 
         # Max ~180 kWh/kWp/Monat ist extrem (Juni in Süddeutschland)
         if spez_ertrag > 180:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unrealistischer Ertrag in {mw.jahr}-{mw.monat:02d}: {spez_ertrag:.0f} kWh/kWp"
+            hinweise.append(
+                f"{label} übersprungen: unrealistischer Ertrag ({spez_ertrag:.0f} kWh/kWp)"
             )
+            continue
 
         # Warnung bei sehr hohen Werten
         if spez_ertrag > 150:
-            warnings.append(f"{mw.jahr}-{mw.monat:02d}: Sehr hoher Ertrag ({spez_ertrag:.0f} kWh/kWp)")
+            hinweise.append(f"{label}: Sehr hoher Ertrag ({spez_ertrag:.0f} kWh/kWp)")
 
-    return warnings
+        angenommen.append(mw)
+
+    if not angenommen:
+        raise HTTPException(
+            status_code=400,
+            detail="Kein plausibler Monat im Submit: " + "; ".join(hinweise),
+        )
+
+    return angenommen, hinweise
 
 
 async def calculate_benchmark(db: AsyncSession, anlage: Anlage) -> BenchmarkData:
@@ -128,8 +156,17 @@ async def submit_anlage(
     )
     anlage = result.scalar_one_or_none()
 
-    # Plausibilität prüfen
-    warnings = validate_monatswerte_plausibility(data)
+    # Plausibilität prüfen — unplausible Monate werden übersprungen, nicht der Submit
+    angenommen, warnings = validate_monatswerte_plausibility(data)
+    uebersprungen = [w for w in warnings if " übersprungen: " in w]
+    if uebersprungen:
+        # Im Container-Log sichtbar: bis zum 19.09.2026 stand im Proxy-Log nur
+        # „400, 59 Bytes" — der Grund war von außen nicht unterscheidbar.
+        logger.warning(
+            "submit: %d von %d Monat(en) uebersprungen hash=%s: %s",
+            len(uebersprungen), len(data.monatswerte), anlage_hash[:12],
+            "; ".join(uebersprungen),
+        )
 
     if anlage:
         # Update: Rate-Limit-Fenster rollend 24h prüfen. Wenn das letzte Fenster
@@ -202,8 +239,8 @@ async def submit_anlage(
         await db.flush()  # ID generieren
         message = "Anlage erstellt"
 
-    # Monatswerte einfügen/aktualisieren
-    for mw in data.monatswerte:
+    # Monatswerte einfügen/aktualisieren — nur die angenommenen (s. o.)
+    for mw in angenommen:
         # Bestehenden Monatswert suchen
         result = await db.execute(
             select(Monatswert)
@@ -339,7 +376,8 @@ async def submit_anlage(
         success=True,
         message=message + (f" (Hinweise: {', '.join(warnings)})" if warnings else ""),
         anlage_hash=anlage_hash,
-        anzahl_monate=len(data.monatswerte),
+        anzahl_monate=len(angenommen),
+        hinweise=warnings,
         benchmark=benchmark,
     )
 

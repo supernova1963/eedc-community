@@ -400,11 +400,18 @@ class AnlageOutput(BaseModel):
 
 
 class SubmitResponse(BaseModel):
-    """Antwort nach erfolgreicher Einreichung."""
+    """Antwort nach erfolgreicher Einreichung.
+
+    ``hinweise`` (seit 19.09.2026, eedc N-523): Klartext je auffälligem Monat —
+    ein übersprungener beginnt mit ``YYYY-MM übersprungen:``. ``anzahl_monate``
+    zählt nur die angenommenen. Der Text steht zusätzlich in ``message``, damit
+    ältere Clients ihn weiterhin sehen.
+    """
     success: bool
     message: str
     anlage_hash: str
     anzahl_monate: int
+    hinweise: list[str] = []
     # Vergleichsdaten
     benchmark: "BenchmarkData | None" = None
 

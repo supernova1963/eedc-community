@@ -14,7 +14,7 @@ Anonymer Datensammel-Server für PV-Anlagen Vergleichsstatistiken.
 - **Performance-Metriken im Regional-Tab** (ab v2.2.0): Ø Speicher-Ladung/Entladung, Wärme je kWh Strom, Ø E-Auto km, Ø Wallbox-Ladung, Ø BKW-Ertrag pro Bundesland
   - ⚠ **„Wärme je kWh Strom" ist keine Arbeitszahl je Anlage** (bis 07.09.2026 „Ø JAZ" genannt): Der Wert ist energiegewichtet über alle Monatszeilen der Region, Zähler und Nenner stammen also aus verschiedenen Anlagen. Die Arbeitszahl der **typischen Anlage** ist eine andere Größe und steht unter `/api/components/waermepumpe/by-region`. **Beide bleiben bestehen** — sie beantworten verschiedene Fragen; jede nennt die Zahl der Anlagen, aus denen sie entstanden ist.
 - **Dark Mode** mit System-Präferenz-Erkennung
-- **Rate-Limiting** und Plausibilitätsprüfung
+- **Rate-Limiting** und Plausibilitätsprüfung — ein unplausibler Monat (Ertrag 0, Zukunftsmonat, über 180 kWh/kWp) wird übersprungen und in `hinweise` genannt, die übrigen Monate werden angenommen; erst ohne einen plausiblen Monat antwortet der Server mit 400 (seit 19.09.2026, eedc N-523)
 - **Dashboard** mit Recharts-Visualisierungen
 
 ## Projektstruktur
