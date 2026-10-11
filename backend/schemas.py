@@ -77,10 +77,21 @@ class MonatswertInput(BaseModel):
       Eigenverbrauch × Strommix **plus Wärmepumpe und E-Mobilität**). Er ersetzt
       die serverseitige Rechnung ``Eigenverbrauch × 0,38``, die WP und E-Mob
       ganz ausließ und die Gemeinschaftssumme um gut 22 % zu niedrig auswies.
+      **Vertrag (N-660, 11.10.2026):** ``co2_vermieden_kg`` ist die
+      **Client-Bilanz** des Monats und wird vom Server unverändert summiert
+      (``statistics.py::get_global_totals``); seit eedc 4.1.5 (N-588) rechnet
+      ihr PV-Anteil mit dem Eigenverbrauch **ohne** Wandlungsverluste. Der
+      Client sendet das Feld nur bei einer Bilanz > 0. Nur für Zeilen **ohne**
+      Wert (Altbestand) bleibt der Rückfall ``max(0, Σ Erzeugung −
+      Σ Einspeisung) × 0,38`` über genau diese Zeilen.
     - ``eigenverbrauch_kwh`` — der gemessene Eigenverbrauch in kWh. Der Server
       hat ihn bis dahin aus ``Erzeugung − Einspeisung`` rekonstruiert; das ist
       falsch, sobald ein weiterer Erzeuger hinter demselben Zähler sitzt oder
-      der Speicher mitspielt.
+      der Speicher mitspielt. ⚠ ``eigenverbrauch_kwh`` **trägt die
+      Wandlungsverluste** (die Energiebilanz-Größe, wie eedc sie anzeigt) —
+      ``co2_vermieden_kg`` ist deshalb ab eedc 4.1.5 **nicht** mehr
+      ``eigenverbrauch_kwh × Strommix + WP + E-Mob``; wer das CO₂ aus diesem
+      Feld nachbaut, rechnet die Verluste als vermiedene Emission.
 
     ⚠ **Alle drei sind optional und bleiben es.** Ältere Clients senden sie nicht;
     dort greifen die bisherigen Wege weiter. Eine Nachrechnung auf dem Server
@@ -799,7 +810,9 @@ class CommunityGesamtwerte(BaseModel):
     bkw_erzeugung_kwh: float
 
     # Impact
-    co2_vermieden_kg: float  # eigenverbrauch × 0.38 kg/kWh
+    # Σ der gelieferten `co2_vermieden_kg` (Client-Bilanz, s. `MonatswertInput`);
+    # nur Zeilen ohne Wert: max(0, Σ Erzeugung − Σ Einspeisung) × 0,38 (N-660).
+    co2_vermieden_kg: float
 
     # Monatliche Summen (letzte 12 Monate)
     monatliche_summen: list[MonatsSumme]

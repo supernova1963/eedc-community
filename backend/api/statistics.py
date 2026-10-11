@@ -42,6 +42,10 @@ from .aggregations import compute_speicher_stats
 
 router = APIRouter(prefix="/statistics", tags=["Erweiterte Statistiken"])
 
+# Der bisherige Server-Faktor (deutscher Strommix, kg/kWh) — seit N-660 NUR noch
+# der Rückfall für Monatswerte ohne geliefertes `co2_vermieden_kg` (Altbestand).
+CO2_RUECKFALL_KG_KWH = 0.38
+
 
 @router.get("/global", response_model=GlobaleStatistik)
 async def get_global_statistics(db: AsyncSession = Depends(get_db)):
@@ -235,6 +239,23 @@ async def get_global_totals(db: AsyncSession = Depends(get_db)):
             func.sum(func.coalesce(Monatswert.wallbox_ladung_kwh, 0)).label("sum_wb_lad"),
             func.sum(func.coalesce(Monatswert.wallbox_ladung_pv_kwh, 0)).label("sum_wb_pv"),
             func.sum(func.coalesce(Monatswert.bkw_erzeugung_kwh, 0)).label("sum_bkw"),
+            # N-660: CO₂ je Zeile — geliefert, wo der Client es trägt; die zwei
+            # Rückfall-Summen nur über die Zeilen OHNE Wert (s. u.).
+            func.sum(Monatswert.co2_vermieden_kg).label("sum_co2_geliefert"),
+            func.sum(
+                case(
+                    (Monatswert.co2_vermieden_kg.is_(None),
+                     func.coalesce(Monatswert.ertrag_kwh, 0)),
+                    else_=0,
+                )
+            ).label("sum_ertrag_ohne_co2"),
+            func.sum(
+                case(
+                    (Monatswert.co2_vermieden_kg.is_(None),
+                     func.coalesce(Monatswert.einspeisung_kwh, 0)),
+                    else_=0,
+                )
+            ).label("sum_einspeisung_ohne_co2"),
         )
     )
     mw_row = result.one()
@@ -320,8 +341,35 @@ async def get_global_totals(db: AsyncSession = Depends(get_db)):
     )
     _wp_quotient_n = int(_q[2] or 0) if _wp_quotient is not None else None
 
-    # CO2-Faktor: 0.38 kg/kWh (deutscher Strommix)
-    co2_vermieden = eigenverbrauch * 0.38
+    # ── CO₂ aus den gelieferten Monatswerten (eedc N-660, 11.10.2026) ────────
+    #
+    # ⛔ Bis hierher stand an dieser Stelle `eigenverbrauch × 0,38` über ALLE
+    # Zeilen — obwohl der Client seit eedc v4.0.22 (F-47) je Monat
+    # `co2_vermieden_kg` liefert, eedcs einzigen CO₂-Kanon (ADR-001/DI-2: PV-
+    # Eigenverbrauch × Strommix **plus Wärmepumpe und E-Mobilität**; seit eedc
+    # 4.1.5 / N-588 auf dem Eigenverbrauch ohne Wandlungsverluste). Die Wärme-
+    # pumpen allein fehlten damit mit rund 22 % der Gemeinschaftssumme.
+    #
+    # ⭐ Je ZEILE entschieden: Zeilen mit Wert tragen ihren Wert; nur die Zeilen
+    # OHNE Wert (Altbestand / Client < v4.0.22, oder ein Monat, dessen Bilanz
+    # 0 war — der Client sendet dann keinen Wert) fallen auf die bisherige
+    # Rechnung zurück — `max(0, Σ Erzeugung − Σ Einspeisung) × 0,38`, über
+    # genau diese Zeilen. Ohne eine einzige gelieferte Zeile ist das bitgleich
+    # mit dem alten Ergebnis. Ein `coalesce(sum(co2), sum(ev) × 0,38)` wäre
+    # falsch: eine einzige neue Zeile schaltete den Rückfall für den ganzen
+    # Altbestand ab (dieselbe Bauform wie `funktionsfremd_abzug_sql`, WK-06b).
+    # Der Rückfall fällt nicht automatisch weg; Altbestand heilt beim nächsten
+    # Voll-Submit.
+    #
+    # `pv_eigenverbrauch_kwh` oben bleibt bewusst `Erzeugung − Einspeisung`
+    # (Mengen-Sicht des Impact-Tabs) — er ist nicht mehr die Basis des CO₂.
+    co2_geliefert = float(mw_row.sum_co2_geliefert or 0)
+    co2_rueckfall = max(
+        0.0,
+        float(mw_row.sum_ertrag_ohne_co2 or 0)
+        - float(mw_row.sum_einspeisung_ohne_co2 or 0),
+    ) * CO2_RUECKFALL_KG_KWH
+    co2_vermieden = co2_geliefert + co2_rueckfall
 
     return CommunityGesamtwerte(
         anzahl_anlagen=anzahl_anlagen,
