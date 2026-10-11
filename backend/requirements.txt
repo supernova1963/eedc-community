@@ -3,7 +3,7 @@ fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
 
 # Datenbank
-sqlalchemy>=2.0.0
+sqlalchemy[asyncio]>=2.0.0,<2.1  # 2.1.0 (24.09.2026) liefert greenlet nur noch als Extra — Image vom 11.10. startete nicht (ImportError greenlet); gleicher Pin wie eedc Add-on
 asyncpg>=0.29.0
 alembic>=1.13.0
 
