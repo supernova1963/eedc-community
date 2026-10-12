@@ -289,3 +289,24 @@ export interface CommunityGesamtwerte {
   co2_vermieden_kg: number
   monatliche_summen: MonatsSumme[]
 }
+
+/** Ein Bin aus `GET /api/statistics/distributions/{metric}` (Server: `von <= wert < bis`). */
+export interface VerteilungsBin {
+  von: number
+  bis: number
+  anzahl: number
+}
+
+/** Verteilung aus `GET /api/statistics/distributions/{metric}` (Schema `Verteilung` im Backend). */
+export interface Verteilung {
+  metric: string
+  einheit: string
+  bins: VerteilungsBin[]
+  statistik: {
+    min: number
+    max: number
+    median: number
+    durchschnitt: number
+    stdabweichung: number
+  }
+}

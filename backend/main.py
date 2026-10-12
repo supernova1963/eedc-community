@@ -89,9 +89,14 @@ if assets_path.exists() and index_path.exists():
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        """Statische Dateien aus static/ direkt liefern, sonst SPA-Fallback."""
-        requested = static_path / full_path
-        if requested.exists() and requested.is_file():
+        """Statische Dateien aus static/ direkt liefern, sonst SPA-Fallback.
+
+        Path-Traversal-Schutz (N-744, Muster Add-on #65): uvicorn dekodiert
+        ``%2e%2e`` zu ``..``, Starlette normalisiert nicht — ausgeliefert wird
+        nur, was aufgelöst innerhalb von static/ liegt.
+        """
+        requested = (static_path / full_path).resolve()
+        if requested.is_relative_to(static_path.resolve()) and requested.is_file():
             return FileResponse(requested)
         return FileResponse(index_path)
 else:

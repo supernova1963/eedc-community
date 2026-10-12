@@ -213,7 +213,7 @@ class Monatswert(Base):
 | Frontend-Änderungen nicht sichtbar | `cd frontend && npm run build` ausführen |
 | Container zeigt alte Version | Portainer: "Recreate" mit "Pull latest image" |
 | Push rejected (workflow scope) | Workflow-Datei nicht ändern oder manuell auf GitHub |
-| API-Route gibt HTML zurück | Catch-all Route wurde entfernt, sollte nicht mehr passieren |
+| API-Route gibt HTML zurück | Die Catch-all liefert Dateien nur aus `static/`, sonst `index.html`; unbekannte `/api/*`-Pfade bekommen ebenfalls HTML — Routen vorher prüfen |
 
 ## Verbundenes Repository: eedc-homeassistant
 

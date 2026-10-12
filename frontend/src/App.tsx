@@ -5,11 +5,12 @@ import CommunityOverview from './pages/CommunityOverview'
 import PersonalizedView from './pages/PersonalizedView'
 import { useDarkMode } from './hooks/useDarkMode'
 import { getAnlageHash, getCurrentPage, navigateTo, fetchJson } from './utils'
-import type { GesamtStatistik, CommunityGesamtwerte, AnlageBenchmark } from './types'
+import type { GesamtStatistik, CommunityGesamtwerte, AnlageBenchmark, Verteilung } from './types'
 
 export default function App() {
   const [stats, setStats] = useState<GesamtStatistik | null>(null)
   const [totals, setTotals] = useState<CommunityGesamtwerte | null>(null)
+  const [kwpVerteilung, setKwpVerteilung] = useState<Verteilung | null>(null)
   const [benchmark, setBenchmark] = useState<AnlageBenchmark | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -31,13 +32,15 @@ export default function App() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        // Stats und Totals parallel laden
-        const [statsData, totalsData] = await Promise.all([
+        // Stats, Totals und kWp-Verteilung parallel laden
+        const [statsData, totalsData, kwpData] = await Promise.all([
           fetchJson<GesamtStatistik>('/api/stats'),
           fetchJson<CommunityGesamtwerte>('/api/statistics/global/totals').catch(() => null),
+          fetchJson<Verteilung>('/api/statistics/distributions/kwp').catch(() => null),
         ])
         setStats(statsData)
         setTotals(totalsData)
+        setKwpVerteilung(kwpData)
 
         // Wenn anlage Parameter vorhanden, Benchmark laden (immer Jahresertrag)
         if (anlageHash) {
@@ -139,5 +142,5 @@ export default function App() {
   }
 
   // Standard Community-Übersicht
-  return <CommunityOverview stats={stats} totals={totals} isDark={isDark} toggleDark={toggleDark} />
+  return <CommunityOverview stats={stats} totals={totals} kwpVerteilung={kwpVerteilung} isDark={isDark} toggleDark={toggleDark} />
 }

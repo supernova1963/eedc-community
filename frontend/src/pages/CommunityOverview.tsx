@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { GesamtStatistik, CommunityGesamtwerte, TabId } from '../types'
+import type { GesamtStatistik, CommunityGesamtwerte, TabId, Verteilung } from '../types'
 import HeroSection from '../components/layout/HeroSection'
 import StickyHeader from '../components/layout/StickyHeader'
 import FadeIn from '../components/layout/FadeIn'
@@ -16,7 +16,7 @@ import GermanyHeatmap from '../components/charts/GermanyHeatmap'
 import MonatsvergleichTab from '../sections/MonatsvergleichTab'
 import MitmachenTab from '../sections/MitmachenTab'
 
-export default function CommunityOverview({ stats, totals, isDark, toggleDark }: { stats: GesamtStatistik; totals: CommunityGesamtwerte | null; isDark: boolean; toggleDark: () => void }) {
+export default function CommunityOverview({ stats, totals, kwpVerteilung, isDark, toggleDark }: { stats: GesamtStatistik; totals: CommunityGesamtwerte | null; kwpVerteilung: Verteilung | null; isDark: boolean; toggleDark: () => void }) {
   const [activeTab, setActiveTab] = useState<TabId>('uebersicht')
   const [heroCollapsed, setHeroCollapsed] = useState(false)
 
@@ -127,7 +127,7 @@ export default function CommunityOverview({ stats, totals, isDark, toggleDark }:
                 <AusstattungsVerteilung stats={stats} />
               </FadeIn>
               <FadeIn delay={150} from="right">
-                <GroessenVerteilung stats={stats} />
+                <GroessenVerteilung stats={stats} verteilung={kwpVerteilung} />
               </FadeIn>
             </div>
           </div>
